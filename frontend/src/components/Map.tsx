@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { default as MapGL, Source, Layer } from "react-map-gl";
+import { default as MapGL, Source, Layer, Marker } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 interface MapProps {
@@ -10,9 +10,10 @@ interface MapProps {
   routeType: "safest" | "fastest";
   crimeHotspots?: Array<{ latitude: number; longitude: number; radius: number; severity: string }>;
   route?: Array<{ latitude: number; longitude: number }>;
+  triggerFlyTo?: boolean;
 }
 
-export default function Map({ source, destination, routeType, crimeHotspots = [], route = [] }: MapProps) {
+export default function Map({ source, destination, routeType, crimeHotspots = [], route = [], triggerFlyTo }: MapProps) {
   const mapRef = useRef<any>(null);
   const [viewState, setViewState] = useState({
     longitude: 77.2167,
@@ -20,15 +21,32 @@ export default function Map({ source, destination, routeType, crimeHotspots = []
     zoom: 14,
   });
 
+  // Fly to route center with 3D view when route is calculated
   useEffect(() => {
-    if (source.lat && source.lng) {
+    if (triggerFlyTo && mapRef.current && route.length > 0) {
+      const centerLng = (source.lng + destination.lng) / 2;
+      const centerLat = (source.lat + destination.lat) / 2;
+      
+      mapRef.current.flyTo({
+        center: [centerLng, centerLat],
+        zoom: 15,
+        pitch: 60,
+        bearing: -20,
+        duration: 2500,
+      });
+    }
+  }, [triggerFlyTo, route, source, destination]);
+
+  // Update view state when source changes (without flyTo)
+  useEffect(() => {
+    if (source.lat && source.lng && !triggerFlyTo) {
       setViewState({
         longitude: source.lng,
         latitude: source.lat,
         zoom: 14,
       });
     }
-  }, [source]);
+  }, [source, triggerFlyTo]);
 
   // 3D Buildings Layer
   const buildingLayer = {
@@ -157,18 +175,19 @@ export default function Map({ source, destination, routeType, crimeHotspots = []
           </Source>
         )}
 
-        {/* Source Marker */}
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            pointerEvents: "none",
-          }}
-        >
-          <div className="w-6 h-6 bg-cyber-green rounded-full shadow-neon-green animate-pulse" />
-        </div>
+        {/* Source Marker - using Mapbox Marker component for geographic positioning */}
+        {source.lat && source.lng && (
+          <Marker longitude={source.lng} latitude={source.lat} anchor="center">
+            <div className="w-4 h-4 bg-cyber-green rounded-full shadow-neon-green animate-pulse border-2 border-white" />
+          </Marker>
+        )}
+
+        {/* Destination Marker - using Mapbox Marker component for geographic positioning */}
+        {destination.lat && destination.lng && (
+          <Marker longitude={destination.lng} latitude={destination.lat} anchor="center">
+            <div className="w-4 h-4 bg-cyber-pink rounded-full shadow-neon-pink animate-pulse border-2 border-white" />
+          </Marker>
+        )}
       </MapGL>
 
       {/* Map Controls Overlay */}

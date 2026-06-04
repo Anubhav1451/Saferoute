@@ -11,6 +11,16 @@ export default function Home() {
   const [crimeHotspots, setCrimeHotspots] = useState<any[]>([]);
   const [route, setRoute] = useState<any[]>([]);
   const [currentLocation, setCurrentLocation] = useState({ lat: 28.6315, lng: 77.2167 });
+  const [triggerFlyTo, setTriggerFlyTo] = useState(false);
+
+  const handleLocationSelect = (type: 'source' | 'dest', lat: number, lng: number) => {
+    if (type === 'source') {
+      setSource({ lat, lng });
+      setCurrentLocation({ lat, lng });
+    } else {
+      setDestination({ lat, lng });
+    }
+  };
 
   const handleRouteCalculate = async (src: { lat: number; lng: number }, dest: { lat: number; lng: number }) => {
     setSource(src);
@@ -41,6 +51,10 @@ export default function Home() {
           { latitude: 28.6340, longitude: 77.2190, radius: 150, severity: "MEDIUM" },
           { latitude: 28.6300, longitude: 77.2185, radius: 180, severity: "LOW" },
         ]);
+
+        // Trigger flyTo animation after route is calculated
+        setTriggerFlyTo(true);
+        setTimeout(() => setTriggerFlyTo(false), 3000);
       }
     } catch (error) {
       console.error("Error calculating route:", error);
@@ -77,6 +91,7 @@ export default function Home() {
         onRouteCalculate={handleRouteCalculate} 
         onSOSTrigger={handleSOSTrigger}
         currentLocation={currentLocation}
+        onLocationSelect={handleLocationSelect}
       />
       <Map
         source={source}
@@ -84,6 +99,7 @@ export default function Home() {
         routeType={routeType}
         crimeHotspots={crimeHotspots}
         route={route}
+        triggerFlyTo={triggerFlyTo}
       />
     </main>
   );
