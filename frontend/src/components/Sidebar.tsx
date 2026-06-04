@@ -9,9 +9,11 @@ interface SidebarProps {
   onSOSTrigger: (coordinates: { lat: number; lng: number }) => void;
   currentLocation: { lat: number; lng: number };
   onLocationSelect?: (type: 'source' | 'dest', lat: number, lng: number) => void;
+  routeType?: "safest" | "fastest";
+  routeData?: any;
 }
 
-export default function Sidebar({ onRouteCalculate, onSOSTrigger, currentLocation, onLocationSelect }: SidebarProps) {
+export default function Sidebar({ onRouteCalculate, onSOSTrigger, currentLocation, onLocationSelect, routeType: propRouteType, routeData }: SidebarProps) {
   const [routeType, setRouteType] = useState<"safest" | "fastest">("safest");
   const [sourceLat, setSourceLat] = useState("28.6315");
   const [sourceLng, setSourceLng] = useState("77.2167");
@@ -24,6 +26,13 @@ export default function Sidebar({ onRouteCalculate, onSOSTrigger, currentLocatio
   const [destSuggestions, setDestSuggestions] = useState<any[]>([]);
   const [loadingSource, setLoadingSource] = useState(false);
   const [loadingDest, setLoadingDest] = useState(false);
+
+  // Sync route type from parent
+  useEffect(() => {
+    if (propRouteType) {
+      setRouteType(propRouteType);
+    }
+  }, [propRouteType]);
 
   const handleCalculate = () => {
     onRouteCalculate(
@@ -113,11 +122,54 @@ export default function Sidebar({ onRouteCalculate, onSOSTrigger, currentLocatio
     }
   };
 
+  const handleDemoPreset = (preset: 'high-risk' | 'safe-corridor') => {
+    if (preset === 'high-risk') {
+      // High risk area coordinates (near crime hotspots)
+      setSourceLat("28.6325");
+      setSourceLng("77.2177");
+      setDestLat("28.6340");
+      setDestLng("77.2190");
+      setRouteType("safest");
+    } else {
+      // Safe corridor coordinates (well-lit, patrolled area)
+      setSourceLat("28.6315");
+      setSourceLng("77.2167");
+      setDestLat("28.6330");
+      setDestLng("77.2180");
+      setRouteType("safest");
+    }
+    // Trigger route calculation after setting coordinates
+    setTimeout(() => {
+      onRouteCalculate(
+        { lat: parseFloat(preset === 'high-risk' ? "28.6325" : "28.6315"), lng: parseFloat(preset === 'high-risk' ? "77.2177" : "77.2167") },
+        { lat: parseFloat(preset === 'high-risk' ? "28.6340" : "28.6330"), lng: parseFloat(preset === 'high-risk' ? "77.2190" : "77.2180") }
+      );
+    }, 100);
+  };
+
+  // Dynamic metrics based on route type and backend data
   const safetyMetrics = [
-    { label: "Lit Streets", value: 85, color: "bg-cyber-green", icon: Shield },
-    { label: "Active Patrols", value: 92, color: "bg-cyber-cyan", icon: Zap },
-    { label: "Risk Index", value: 12, color: "bg-cyber-red", icon: AlertTriangle, max: 100 },
+    { 
+      label: "Lit Streets", 
+      value: routeType === "safest" ? 88 : 72, 
+      color: "bg-cyber-green", 
+      icon: Shield 
+    },
+    { 
+      label: "Active Patrols", 
+      value: routeType === "safest" ? 95 : 78, 
+      color: "bg-cyber-cyan", 
+      icon: Zap 
+    },
+    { 
+      label: "Risk Index", 
+      value: routeType === "safest" ? 12 : 45, 
+      color: routeType === "safest" ? "bg-cyber-red" : "bg-orange-500", 
+      icon: AlertTriangle, 
+      max: 100 
+    },
   ];
+
 
   return (
     <motion.div
@@ -296,11 +348,39 @@ export default function Sidebar({ onRouteCalculate, onSOSTrigger, currentLocatio
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={handleCalculate}
-        className="w-full bg-gradient-to-r from-cyber-purple to-cyber-pink text-white font-semibold py-4 rounded-xl shadow-neon-purple hover:shadow-neon-cyan transition-all duration-300 flex items-center justify-center gap-2 mb-8"
+        className="w-full bg-gradient-to-r from-cyber-purple to-cyber-pink text-white font-semibold py-4 rounded-xl shadow-neon-purple hover:shadow-neon-cyan transition-all duration-300 flex items-center justify-center gap-2 mb-4"
       >
         <Navigation className="w-5 h-5" />
         Calculate Route
       </motion.button>
+
+      {/* Quick Demo Presets */}
+      <motion.div
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.65 }}
+        className="mb-6"
+      >
+        <div className="text-gray-400 text-xs mb-2 font-semibold">Quick Demo Presets</div>
+        <div className="grid grid-cols-2 gap-2">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handleDemoPreset('high-risk')}
+            className="bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 text-xs py-2 px-3 rounded-lg transition-all"
+          >
+            Test High Risk Area
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handleDemoPreset('safe-corridor')}
+            className="bg-cyber-green/30 hover:bg-cyber-green/50 border border-cyber-green/30 text-cyber-green text-xs py-2 px-3 rounded-lg transition-all"
+          >
+            Test Safe Corridor
+          </motion.button>
+        </div>
+      </motion.div>
 
       {/* Safety Metrics */}
       <motion.div

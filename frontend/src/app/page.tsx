@@ -92,6 +92,8 @@ export default function Home() {
         onSOSTrigger={handleSOSTrigger}
         currentLocation={currentLocation}
         onLocationSelect={handleLocationSelect}
+        routeType={routeType}
+        routeData={route}
       />
       <Map
         source={source}
