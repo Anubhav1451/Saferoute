@@ -1,4 +1,5 @@
 import random
+import math
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -41,6 +42,33 @@ def generate_safety_nodes(count=80):
         )
         nodes.append(node)
     return nodes
+
+
+def generate_safe_detour_nodes(hotspots, detour_radius=0.003, nodes_per_hotspot=5):
+    """Generate safe detour nodes around crime hotspots for alternate routing"""
+    detour_nodes = []
+    
+    for hotspot in hotspots:
+        if hotspot.severity == SeverityLevel.HIGH:
+            # Generate safe detour nodes around high-severity hotspots
+            for i in range(nodes_per_hotspot):
+                angle = (2 * math.pi * i) / nodes_per_hotspot
+                # Place nodes at detour_radius distance from hotspot center
+                detour_lat = hotspot.latitude + detour_radius * math.cos(angle)
+                detour_lon = hotspot.longitude + detour_radius * math.sin(angle)
+                
+                # Ensure detour nodes have high safety scores
+                node = SafetyNode(
+                    latitude=detour_lat,
+                    longitude=detour_lon,
+                    safety_score=random.uniform(0.85, 0.98),  # Very safe
+                    lighting_level=LightingLevel.HIGH,  # Well-lit
+                    crowd_density=CrowdDensity.HIGH,  # Well-populated
+                    updated_at=datetime.utcnow()
+                )
+                detour_nodes.append(node)
+    
+    return detour_nodes
 
 
 def generate_crime_hotspots(count=15):
@@ -129,6 +157,11 @@ def generate_mock_data():
         session.add_all(crime_hotspots)
         print(f"Added {len(crime_hotspots)} crime hotspots")
         
+        print("Generating safe detour nodes around high-severity hotspots...")
+        detour_nodes = generate_safe_detour_nodes(crime_hotspots)
+        session.add_all(detour_nodes)
+        print(f"Added {len(detour_nodes)} safe detour nodes")
+        
         print("Generating user reports...")
         user_reports = generate_user_reports(50)
         session.add_all(user_reports)
@@ -141,8 +174,9 @@ def generate_mock_data():
         print("\nSummary:")
         print(f"- Safety Nodes: {len(safety_nodes)}")
         print(f"- Crime Hotspots: {len(crime_hotspots)}")
+        print(f"- Safe Detour Nodes: {len(detour_nodes)}")
         print(f"- User Reports: {len(user_reports)}")
-        print(f"- Total Records: {len(safety_nodes) + len(crime_hotspots) + len(user_reports)}")
+        print(f"- Total Records: {len(safety_nodes) + len(crime_hotspots) + len(detour_nodes) + len(user_reports)}")
         
     except Exception as e:
         print(f"Error generating mock data: {e}")

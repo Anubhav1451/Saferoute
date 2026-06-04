@@ -39,33 +39,42 @@ class SafetyRoutingService:
         - Crime hotspots (high severity = heavy penalty)
         - Safety nodes with low lighting or sparse crowd (medium penalty)
         - Recent active user reports (dynamic penalty)
+        
+        AGGRESSIVE MODE: Penalties increased 5x for high-risk areas
         """
         penalty = 0.0
         
-        # Crime hotspot penalty
+        # Crime hotspot penalty (AGGRESSIVE: 5x multiplier)
         for hotspot in crime_hotspots:
             distance = self.haversine_distance(lat, lon, hotspot.latitude, hotspot.longitude)
             if distance < hotspot.radius:
+                # Calculate proximity factor (closer = higher penalty)
+                proximity_factor = 1.0 - (distance / hotspot.radius)
+                
                 if hotspot.severity == SeverityLevel.HIGH:
-                    penalty += 500.0  # Heavy penalty for high severity
+                    # Exponential penalty for high severity hotspots
+                    # Base 2500 (5x original) + exponential based on proximity
+                    base_penalty = 2500.0
+                    exponential_penalty = base_penalty * (2 ** proximity_factor)
+                    penalty += exponential_penalty
                 elif hotspot.severity == SeverityLevel.MEDIUM:
-                    penalty += 250.0
+                    penalty += 1250.0 * proximity_factor  # 5x original
                 else:
-                    penalty += 100.0
+                    penalty += 500.0 * proximity_factor  # 5x original
         
-        # Safety node penalty
+        # Safety node penalty (AGGRESSIVE: 5x multiplier)
         for node in safety_nodes:
             distance = self.haversine_distance(lat, lon, node.latitude, node.longitude)
             if distance < 100:  # Within 100 meters
                 if node.lighting_level == LightingLevel.LOW:
-                    penalty += 50.0  # Medium penalty for low lighting
+                    penalty += 250.0  # 5x original for low lighting
                 if node.crowd_density == CrowdDensity.SPARSE:
-                    penalty += 30.0  # Medium penalty for sparse crowd
-                # Bonus for high safety score
+                    penalty += 150.0  # 5x original for sparse crowd
+                # Bonus for high safety score (increased)
                 if node.safety_score > 0.8:
-                    penalty -= 20.0  # Reduce penalty for very safe areas
+                    penalty -= 100.0  # 5x bonus for very safe areas
         
-        # User report penalty (dynamic based on recency)
+        # User report penalty (dynamic based on recency, AGGRESSIVE: 5x multiplier)
         recent_threshold = datetime.utcnow() - timedelta(days=7)
         for report in user_reports:
             if report.is_active and report.timestamp > recent_threshold:
@@ -73,9 +82,22 @@ class SafetyRoutingService:
                 if distance < 150:  # Within 150 meters
                     # More recent reports have higher penalty
                     days_old = (datetime.utcnow() - report.timestamp).days
-                    penalty += (100.0 / (days_old + 1))  # Decay over time
+                    penalty += (500.0 / (days_old + 1))  # 5x original, decay over time
         
         return max(0, penalty)  # Ensure penalty is non-negative
+    
+    def is_high_risk_area(self, lat: float, lon: float, 
+                         crime_hotspots: List[CrimeHotspot]) -> bool:
+        """
+        Check if a coordinate is in a high-risk area (HIGH severity hotspot).
+        Returns True if within radius of any HIGH severity hotspot.
+        """
+        for hotspot in crime_hotspots:
+            if hotspot.severity == SeverityLevel.HIGH:
+                distance = self.haversine_distance(lat, lon, hotspot.latitude, hotspot.longitude)
+                if distance < hotspot.radius:
+                    return True
+        return False
     
     def get_nearby_safety_data(self, lat: float, lon: float, radius_meters: float = 2000) -> Tuple:
         """Get safety data within radius of a coordinate"""
@@ -119,10 +141,13 @@ class SafetyRoutingService:
         """
         Calculate total cost of a route considering distance and safety penalties.
         Returns (total_cost, total_distance, segments)
+        
+        AGGRESSIVE MODE: High-risk paths are heavily penalized
         """
         total_distance = 0.0
         total_penalty = 0.0
         segments = []
+        high_risk_segments = 0
         
         for i in range(len(path) - 1):
             from_coord = path[i]
@@ -138,11 +163,17 @@ class SafetyRoutingService:
             mid_lon = (from_coord.longitude + to_coord.longitude) / 2
             penalty = self.calculate_penalty(mid_lat, mid_lon, safety_nodes, crime_hotspots, user_reports)
             
+            # Check if segment passes through high-risk area
+            if self.is_high_risk_area(mid_lat, mid_lon, crime_hotspots):
+                high_risk_segments += 1
+                # Exponential penalty multiplier for high-risk segments
+                penalty *= 3.0
+            
             total_distance += distance
             total_penalty += penalty
             
-            # Calculate safety score for this segment (inverse of penalty)
-            safety_score = max(0, 1.0 - (penalty / 500.0))
+            # Calculate safety score for this segment (inverse of penalty, adjusted for aggressive mode)
+            safety_score = max(0, 1.0 - (penalty / 2500.0))  # Adjusted for 5x penalty scale
             
             segments.append(RouteSegment(
                 from_coord=from_coord,
@@ -151,6 +182,10 @@ class SafetyRoutingService:
                 safety_score=safety_score,
                 penalty=penalty
             ))
+        
+        # Additional penalty if route passes through multiple high-risk segments
+        if high_risk_segments > 0:
+            total_penalty *= (1 + (high_risk_segments * 0.5))  # 50% increase per high-risk segment
         
         # Weighted cost: safety_weight * penalty + (1 - safety_weight) * distance
         weighted_cost = (safety_weight * total_penalty) + ((1 - safety_weight) * total_distance)
