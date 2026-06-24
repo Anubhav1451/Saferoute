@@ -63,7 +63,7 @@ def generate_safe_detour_nodes(hotspots, detour_radius=0.003, nodes_per_hotspot=
                     longitude=detour_lon,
                     safety_score=random.uniform(0.85, 0.98),  # Very safe
                     lighting_level=LightingLevel.HIGH,  # Well-lit
-                    crowd_density=CrowdDensity.HIGH,  # Well-populated
+                    crowd_density=CrowdDensity.DENSE,  # Well-populated
                     updated_at=datetime.utcnow()
                 )
                 detour_nodes.append(node)

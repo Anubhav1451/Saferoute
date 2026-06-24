@@ -66,28 +66,32 @@ async def trigger_sos(
     with the user's live coordinates and safety context.
     """
     try:
-        # Simulate emergency alert processing
-        print("\n" + "="*60)
-        print("🚨 EMERGENCY SOS ALERT TRIGGERED 🚨")
-        print("="*60)
-        print(f"Timestamp: {datetime.utcnow().isoformat()}")
-        print(f"User Location: {request.latitude}, {request.longitude}")
-        print(f"Original Timestamp: {request.timestamp}")
-        print("\n📱 SENDING EMERGENCY ALERTS:")
+        # Simulate emergency alert processing with high-visibility terminal logging
+        print("\n" + "="*70)
+        print("🚨" + " "*20 + "CRITICAL SECURITY ALERT" + " "*20 + "🚨")
+        print("="*70)
+        print(f"⚠️  DISTRESS SIGNAL RECEIVED AT: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        print(f"📍 LOCATION: Lat: {request.latitude:.6f}, Lng: {request.longitude:.6f}")
+        print(f"📱 SMS DISPATCHED TO GUARDIANS: \"+91 XXXXXXX890\"")
+        print(f"🚔 STATUS: Police Patrol Vehicle #04 REDIRECTED TO LOCATION")
+        print("\n" + "-"*70)
+        print("� EMERGENCY RESPONSE LOG:")
+        print("-"*70)
         print("  ✅ SMS sent to emergency contact: +91-9876543210")
         print("  ✅ Email sent to: emergency@saferoute.ai")
         print("  ✅ Alert sent to Police Control Room (100)")
         print("  ✅ Alert sent to Women's Helpline (1091)")
         print("  ✅ Alert sent to Emergency Services (112)")
         print("\n📍 COORDINATES SHARED:")
-        print(f"  Latitude: {request.latitude}")
-        print(f"  Longitude: {request.longitude}")
+        print(f"  Latitude: {request.latitude:.6f}")
+        print(f"  Longitude: {request.longitude:.6f}")
         print(f"  Google Maps: https://maps.google.com/?q={request.latitude},{request.longitude}")
         print("\n🛡️ SAFETY CONTEXT:")
-        print("  User's current safety route context attached")
-        print("  Nearby safety nodes and crime hotspots identified")
-        print("  Emergency response team dispatched")
-        print("="*60 + "\n")
+        print("  ✓ User's current safety route context attached")
+        print("  ✓ Nearby safety nodes and crime hotspots identified")
+        print("  ✓ Emergency response team dispatched")
+        print("  ✓ Live location tracking activated")
+        print("="*70 + "\n")
         
         return {
             "status": "success",
@@ -97,12 +101,18 @@ async def trigger_sos(
                 "latitude": request.latitude,
                 "longitude": request.longitude
             },
+            "dispatch_details": {
+                "police_patrol": "Vehicle #04 redirected to location",
+                "guardians_notified": "+91 XXXXXXX890",
+                "emergency_contacts": ["100", "1091", "112"]
+            },
             "alerts_sent": [
                 "SMS to emergency contact",
                 "Email to emergency services",
                 "Police Control Room",
                 "Women's Helpline",
-                "Emergency Services"
+                "Emergency Services",
+                "Guardians notified"
             ]
         }
         
