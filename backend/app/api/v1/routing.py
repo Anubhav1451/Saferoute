@@ -1,5 +1,6 @@
 # app/api/v1/routing.py
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.routing import SafetyRoutingService
@@ -33,8 +34,11 @@ async def calculate_route(
             destination=request.destination,
             safety_weight=request.safety_weight
         )
+        print(f"Routing service result keys: {result.keys()}")
+        print(f"Safest route: {result.get('safest_route')}")
+        print(f"Fastest route: {result.get('fastest_route')}")
 
-        return success_response(
+        response = success_response(
             data={
                 "safest_route": result["safest_route"],
                 "fastest_route": result["fastest_route"],
@@ -46,20 +50,30 @@ async def calculate_route(
             },
             message="Route calculation completed successfully"
         )
+        print(f"[BACKEND] Final response: {response}")
+        return response
 
     except ValueError as e:
-        return error_response(
-            error=str(e),
-            error_code="VALIDATION_ERROR",
-            message="Invalid input data"
+        print(f"[BACKEND] Validation error: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_response(
+                error=str(e),
+                error_code="VALIDATION_ERROR",
+                message="Invalid input data"
+            )
         )
     except Exception as e:
-        # Log the error (in a real app, you'd use proper logging)
-        print(f"Route calculation error: {e}")
-        return error_response(
-            error="Internal server error",
-            error_code="INTERNAL_ERROR",
-            message="Route calculation failed"
+        print(f"[BACKEND] Route calculation error: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_response(
+                error="Internal server error",
+                error_code="INTERNAL_ERROR",
+                message="Route calculation failed"
+            )
         )
 
 

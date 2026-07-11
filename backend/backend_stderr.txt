@@ -1,0 +1,10 @@
+INFO:     Started server process [22144]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:app.services.routing:[MAPBOX_DIAG] Token present: pk.eyJ1I... (len=94)
+INFO:app.services.routing:SAFETY_DATA_CACHE_MISS: Cached safety data for corridor: (28.61255, 29.96925, 77.20745, 77.54655)
+INFO:app.services.routing:GRAPH_CACHE_MISS: graph_build_time_seconds=0.000 for corridor: (28.61255, 29.96925, 77.20745, 77.54655)
+INFO:app.services.routing:GRAPH_BUILD_DETAILS: nodes=1092, edges=40594
+INFO:app.services.routing:DIAG: Graph has 1094 nodes, 40654 edges (deduplicated)
+INFO:app.services.routing:DIAG: Penalty precompute time: 4.721s for 20327 unique edges

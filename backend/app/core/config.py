@@ -1,11 +1,12 @@
 # app/core/config.py
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
-from typing import List, Optional
+from typing import List, Optional, Any
 import secrets
 import os
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
     # Application
@@ -22,16 +23,18 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ALGORITHM: str = "HS256"
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001"]
+    BACKEND_CORS_ORIGINS: Any = ["http://localhost:3000", "http://localhost:3001"]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: str | list[str]) -> list[str] | str:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
-        elif isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, list):
+            return [i.strip() for i in v if i.strip()]
+        else:
+            # Try to interpret as JSON list? but we don't expect that
+            raise ValueError(f"Invalid type for BACKEND_CORS_ORIGINS: {type(v)}")
 
     # Database
     DATABASE_URL: str = Field(default="sqlite:///./saferoute.db")
@@ -57,6 +60,10 @@ class Settings(BaseSettings):
     HIGH_RISK_SEGMENT_MULTIPLIER: float = 3.0
     HIGH_RISK_SEGMENT_ADDITIONAL_FACTOR: float = 0.5
 
+    # Road Segment Risk Penalty (pre-computed from accident data)
+    SEGMENT_RISK_BASE_PENALTY: float = 500.0     # Per-segment penalty multiplier × risk_score
+    SEGMENT_RISK_SEARCH_RADIUS_M: float = 200.0  # Max distance from segment start to apply penalty
+
     # Safety Scoring
     SAFETY_SCORE_MAX_PENALTY: float = 2500.0  # Used for normalization
 
@@ -66,14 +73,25 @@ class Settings(BaseSettings):
     DEFAULT_INTERPOLATION_POINTS: int = 20       # Number of points for path interpolation
     PATH_VARIATION_COUNT: int = 5                # Number of path variations to test
 
+    # Graph-based Routing Parameters
+    GRAPH_NEIGHBOR_COUNT: int = 30               # K for K-nearest neighbors in graph building
+    RISK_FACTOR_SAFETY: float = 3.0              # Influence of (1-safety_score) on risk
+    RISK_FACTOR_LIGHTING: float = 4.0            # Influence of low lighting on risk
+    RISK_FACTOR_CROWD: float = 1.5               # Influence of sparse crowd on risk
+    ROUTE_COST_ALPHA: float = 50.0               # Multiplier for risk in safest route cost
+
+    # Mapbox API Configuration
+    MAPBOX_DIRECTIONS_TIMEOUT_SEC: int = 15      # Timeout for Mapbox Directions API calls
+    MAPBOX_TOKEN: str                            # Mapbox access token
+
     # Rate Limiting (placeholder for future implementation)
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
 
     # File paths
-    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
+    BASE_DIR: Path = BASE_DIR
 
     model_config = {
-        "env_file": ".env",
+        "env_file": BASE_DIR / ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": True,
         "extra": "ignore"

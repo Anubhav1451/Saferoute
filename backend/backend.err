@@ -1,0 +1,15 @@
+INFO:     Will watch for changes in these directories: ['D:\\saferoute-ai\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [12056] using WatchFiles
+INFO:     Started server process [3688]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Potential data drift detected. Feature z-scores: {'crime_density_weighted': np.float64(0.05346645973916075), 'crime_high_count': np.float64(0.5115460112244591), 'crime_low_count': np.float64(-0.357560952636834), 'crime_medium_count': np.float64(-0.37293738935106946), 'crime_weighted_severity_avg': np.float64(2.223772712280191), 'crowd_density_avg': np.float64(2.5325835132352807), 'day_of_month': np.float64(1.0355493808906377), 'day_of_week': np.float64(0.0684843359287894), 'hour': np.float64(0.20900707966445636), 'is_night': np.float64(-0.8250286473253883), 'is_weekend': np.float64(-0.6023802870458729), 'latitude': np.float64(0.10365231911544151), 'lighting_avg': np.float64(0.6487410089401279), 'longitude': np.float64(-0.024867364089625397), 'low_lighting_count': np.float64(0.6467125752211453), 'month': np.float64(0.5484642268462754), 'report_count_1h': np.float64(0.0), 'report_count_24h': np.float64(0.0), 'report_count_30d': np.float64(2.2498607347933754), 'report_count_7d': np.float64(2.2498607347933754), 'report_weighted_recent': np.float64(0.2741285768098965), 'report_weighted_severity': np.float64(3.0830054352046483), 'sparse_crowd_count': np.float64(0.23089238276092888), 'total_safety_nodes': np.float64(0.9905704480355982)}
+Mapbox matching failed: 401 {"message":"Not Authorized - Invalid Token"}
+Mapbox matching failed: 401 {"message":"Not Authorized - Invalid Token"}
+Mapbox matching failed: 401 {"message":"Not Authorized - Invalid Token"}
+Mapbox matching failed: 401 {"message":"Not Authorized - Invalid Token"}
+Mapbox matching failed: 401 {"message":"Not Authorized - Invalid Token"}
+Mapbox matching failed: 401 {"message":"Not Authorized - Invalid Token"}
+Mapbox matching failed: 401 {"message":"Not Authorized - Invalid Token"}
+Mapbox matching failed: 401 {"message":"Not Authorized - Invalid Token"}

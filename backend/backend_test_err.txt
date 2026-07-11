@@ -1,0 +1,26 @@
+INFO:     Started server process [20840]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:app.services.routing:SAFETY_DATA_CACHE_MISS: Cached safety data for corridor: (26.91105, 28.61525, 75.78577, 77.21053)
+INFO:app.services.routing:GRAPH_CACHE_MISS: graph_build_time_seconds=0.000 for corridor: (26.91105, 28.61525, 75.78577, 77.21053)
+INFO:app.services.routing:GRAPH_BUILD_DETAILS: nodes=799, edges=31712
+INFO:app.services.routing:DIAG: Graph has 801 nodes, 31772 edges (deduplicated)
+INFO:app.services.routing:DIAG: Penalty precompute time: 1.795s for 15886 unique edges
+INFO:app.services.routing:SAFETY_DATA_CACHE_MISS: Cached safety data for corridor: (18.51905, 19.07735, 72.87627, 73.85813)
+INFO:app.services.routing:GRAPH_CACHE_MISS: graph_build_time_seconds=0.000 for corridor: (18.51905, 19.07735, 72.87627, 73.85813)
+INFO:app.services.routing:GRAPH_BUILD_DETAILS: nodes=1682, edges=61008
+INFO:app.services.routing:DIAG: Graph has 1684 nodes, 61068 edges (deduplicated)
+INFO:app.services.routing:DIAG: Penalty precompute time: 6.886s for 30534 unique edges
+WARNING:app.services.routing:A* algorithm failed to find a path from 19.076,72.8777 to 18.5204,73.8567
+WARNING:app.services.routing:A* algorithm failed to find a path from 19.076,72.8777 to 18.5204,73.8567
+INFO:app.services.routing:SAFETY_DATA_CACHE_MISS: Cached safety data for corridor: (30.31515, 30.73465, 76.77783, 78.03377)
+INFO:app.services.routing:GRAPH_CACHE_MISS: graph_build_time_seconds=0.000 for corridor: (30.31515, 30.73465, 76.77783, 78.03377)
+INFO:app.services.routing:GRAPH_BUILD_DETAILS: nodes=271, edges=10346
+INFO:app.services.routing:DIAG: Graph has 273 nodes, 10406 edges (deduplicated)
+INFO:app.services.routing:DIAG: Penalty precompute time: 0.248s for 5203 unique edges
+INFO:app.services.routing:SAFETY_DATA_CACHE_MISS: Cached safety data for corridor: (26.44855, 26.84805, 80.33039, 80.94771)
+INFO:app.services.routing:GRAPH_CACHE_MISS: graph_build_time_seconds=0.000 for corridor: (26.44855, 26.84805, 80.33039, 80.94771)
+INFO:app.services.routing:GRAPH_BUILD_DETAILS: nodes=148, edges=5650
+INFO:app.services.routing:DIAG: Graph has 150 nodes, 5710 edges (deduplicated)
+INFO:app.services.routing:DIAG: Penalty precompute time: 0.111s for 2855 unique edges

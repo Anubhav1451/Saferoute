@@ -1,0 +1,7 @@
+DEBUG: MAPBOX_TOKEN loaded from .env: pk.eyJ1Ijo...
+INFO:     127.0.0.1:65465 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65469 - "GET /debug/env HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65474 - "GET /api/v1/ai/safety-score?latitude=28.634274861806833&longitude=77.2183481074644&radius=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65478 - "POST /api/v1/calculate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65487 - "POST /api/v1/calculate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52863 - "POST /api/v1/sos/trigger HTTP/1.1" 200 OK

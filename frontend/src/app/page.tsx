@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import Map from "@/components/Map";
 
@@ -21,6 +21,25 @@ export default function Home() {
   const [sosLoading, setSosLoading] = useState(false);
   const [sosError, setSosError] = useState<string | null>(null);
   const [aiInsights, setAiInsights] = useState<any>(null);
+
+  // Attempt to get user's current location on initial load
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setSource({ lat: latitude, lng: longitude });
+          setCurrentLocation({ lat: latitude, lng: longitude });
+        },
+        (error) => {
+          console.warn("Geolocation failed, using fallback location:", error);
+          // Keep fallback (hardcoded Connaught Place)
+        }
+      );
+    } else {
+      console.warn("Geolocation not supported by browser");
+    }
+  }, []);
 
   const handleLocationSelect = (type: 'source' | 'dest', lat: number, lng: number) => {
     if (type === 'source') {
@@ -70,17 +89,26 @@ export default function Home() {
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setRoute(routeType === "safest" ? data.safest_route : data.fastest_route);
-        setSafestSafetyScore(data.safest_safety_score);
-        setFastestSafetyScore(data.fastest_safety_score);
+      const data = await response.json();
+      console.log('[FRONTEND] Raw API response:', JSON.stringify(data, null, 2));
+
+      if (response.ok && data.success && data.data) {
+        const routeData = data.data;
+        console.log('[FRONTEND] routeData keys:', Object.keys(routeData));
+        console.log('[FRONTEND] safest_route length:', routeData.safest_route?.length);
+        console.log('[FRONTEND] fastest_route length:', routeData.fastest_route?.length);
+
+        setRoute(routeType === "safest"
+          ? (routeData.safest_route ?? [])
+          : (routeData.fastest_route ?? []));
+        setSafestSafetyScore(routeData.safest_safety_score ?? null);
+        setFastestSafetyScore(routeData.fastest_safety_score ?? null);
 
         // Get real crime hotspots from AI safety score for route points (sample a few points)
         // For demo, we'll get safety scores for a few points along the route to show AI insights
-        if (routeType === "safest" && data.safest_route.length > 0) {
+        if (routeType === "safest" && routeData.safest_route?.length > 0) {
           // Sample midpoint of route for AI insight
-          const midPoint = data.safest_route[Math.floor(data.safest_route.length / 2)];
+          const midPoint = routeData.safest_route[Math.floor(routeData.safest_route.length / 2)];
           const aiResponse = await fetch(`http://localhost:8000/api/v1/ai/safety-score?latitude=${midPoint.latitude}&longitude=${midPoint.longitude}&radius=500`);
           if (aiResponse.ok) {
             const aiData = await aiResponse.json();
@@ -92,8 +120,9 @@ export default function Home() {
         setTriggerFlyTo(true);
         setTimeout(() => setTriggerFlyTo(false), 3000);
       } else {
-        const errorData = await response.json();
-        setRouteError(errorData.message || "Failed to calculate route");
+        const errorMsg = data?.message || data?.error || "Failed to calculate route";
+        console.error('[FRONTEND] API error response:', data);
+        setRouteError(errorMsg);
       }
     } catch (error) {
       console.error("Error calculating route:", error);
