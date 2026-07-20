@@ -1,7 +1,13 @@
 # app/main.py
 import os
+import sys
 import logging
 from pathlib import Path
+
+# Add backend directory to sys.path to allow imports from app package
+_backend_path = os.path.join(os.path.dirname(__file__), '..')
+if _backend_path not in sys.path:
+    sys.path.insert(0, os.path.abspath(_backend_path))
 
 # Must load .env BEFORE any app imports that trigger Settings() instantiation
 def load_env_file(env_path=".env"):
@@ -35,15 +41,17 @@ from app.api.exceptions import (
     general_exception_handler
 )
 from app.db.session import get_db
+from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
+logger = logging.getLogger("saferoute.main")
 
-# Debug: check if MAPBOX_TOKEN is loaded
+# Debug: check if MAPBOX_TOKEN is loaded (no secrets in logs)
 token = os.getenv("MAPBOX_TOKEN")
 if token:
-    print(f"DEBUG: MAPBOX_TOKEN loaded from .env: {token[:10]}...")
+    logger.info("MAPBOX_TOKEN loaded from .env (length=%d)", len(token))
 else:
-    print("DEBUG: MAPBOX_TOKEN not found in .env")
+    logger.warning("MAPBOX_TOKEN not found in .env")
 
 
 app = FastAPI(
@@ -53,10 +61,10 @@ app = FastAPI(
 )
 
 
-# Configure CORS for Next.js frontend
+# Configure CORS from settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003", "http://localhost:3004", "http://localhost:3005", "http://localhost:3006"],
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -112,8 +120,12 @@ async def health_check(db: Session = Depends(get_db)):
 
 @app.get("/debug/env", tags=["debug"])
 async def debug_env():
+    """Debug endpoint — shows config status only, never secrets."""
     token = os.getenv("MAPBOX_TOKEN")
-    if token:
-        return {"masked_token": token[:4] + "..." + token[-4:] if len(token) > 8 else "too_short"}
-    else:
-        return {"token_set": false}
+    return {
+        "token_set": bool(token),
+        "token_length": len(token) if token else 0,
+        "database_url_set": bool(os.getenv("DATABASE_URL")),
+        "debug_mode": settings.DEBUG,
+        "cors_origins_count": len(settings.BACKEND_CORS_ORIGINS),
+    }
