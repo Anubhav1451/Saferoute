@@ -14,7 +14,6 @@ Usage:
 """
 
 import sys, os, json, time
-from math import radians, sin, cos, sqrt, asin
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict, Any
 
@@ -26,11 +25,11 @@ from app.db.models import (
     HighwayBlackSpot, AccidentRecord, RoadSegmentRisk,
     BlackSpotSeverity, AccidentSeverity,
 )
+from .geo import haversine_distance as _haversine_m
 
 # ---------------------------------------------------------------------------
 # Configurable constants (override via constructor kwargs)
 # ---------------------------------------------------------------------------
-EARTH_RADIUS_M = 6371000
 DEFAULT_GRID_SPACING_M = 200.0
 DEFAULT_ACCIDENT_RADIUS_M = 200.0
 DEFAULT_BLACKSPOT_RADIUS_M = 500.0
@@ -55,13 +54,6 @@ BLACKSPOT_SEVERITY_WEIGHTS = {
 }
 
 
-def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
-    return EARTH_RADIUS_M * 2 * asin(sqrt(a))
-
-
 def _recency_weight(accident_date: Optional[datetime], half_life_y: float) -> float:
     if accident_date is None:
         return 0.3
@@ -74,6 +66,7 @@ def _meters_to_deg_lat(m: float) -> float:
 
 
 def _meters_to_deg_lon(m: float, at_lat: float) -> float:
+    from math import radians, cos
     return m / (111320.0 * cos(radians(at_lat)))
 
 
@@ -313,7 +306,6 @@ class RoadSegmentRiskBuilder:
     @staticmethod
     def _persist(session, segments: List[Dict[str, Any]]):
         session.query(RoadSegmentRisk).delete()
-        session.commit()
 
         batch = []
         for s in segments:

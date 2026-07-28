@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { default as MapGL, Source, Layer, Marker } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 interface MapProps {
   source: { lat: number; lng: number };
   destination: { lat: number; lng: number };
-  routeType: "safest" | "fastest";
+  routeType: "safest" | "balanced" | "fastest";
   crimeHotspots?: Array<{ latitude: number; longitude: number; radius: number; severity: string }>;
   route?: Array<{ latitude: number; longitude: number }>;
   triggerFlyTo?: boolean;
@@ -62,8 +62,8 @@ export default function Map({
     }
   }, [source, triggerFlyTo]);
 
-  // 3D Buildings Layer
-  const buildingLayer = {
+  // Memoize layer objects to prevent unnecessary recreations
+  const buildingLayer = useMemo(() => ({
     id: "3d-buildings",
     source: "composite",
     "source-layer": "building",
@@ -76,9 +76,9 @@ export default function Map({
       "fill-extrusion-base": ["get", "min_height"],
       "fill-extrusion-opacity": 0.8,
     },
-  };
+  }), []);
 
-  // Heatmap Layer for Crime Hotspots
+// Heatmap Layer for Crime Hotspots
   const heatmapLayer = {
     id: "crime-heatmap",
     type: "heatmap",
@@ -106,7 +106,7 @@ export default function Map({
   };
 
   // Route Line Layer
-  const routeLayer = {
+  const routeLayer = useMemo(() => ({
     id: "route-line",
     type: "line",
     paint: {
@@ -115,10 +115,10 @@ export default function Map({
       "line-opacity": 0.9,
       "line-blur": 0.5,
     },
-  };
+  }), [routeType]);
 
   // Route Glow Layer
-  const routeGlowLayer = {
+  const routeGlowLayer = useMemo(() => ({
     id: "route-glow",
     type: "line",
     paint: {
@@ -127,10 +127,10 @@ export default function Map({
       "line-opacity": 0.3,
       "line-blur": 2,
     },
-  };
+  }), [routeType]);
 
   // Safety Score Indicator Layer (small dots along route showing safety)
-  const safetyPointsLayer = {
+  const safetyPointsLayer = useMemo(() => ({
     id: "safety-points",
     type: "circle",
     paint: {
@@ -150,19 +150,18 @@ export default function Map({
       "circle-stroke-color": "#ffffff",
       "circle-opacity": 0.8
     }
-  };
+  }), []);
 
-  // Convert route coordinates to GeoJSON
-  const routeGeoJSON = route.length > 0 ? {
+  // Memoize GeoJSON objects to prevent unnecessary recreations
+  const routeGeoJSON = useMemo(() => route.length > 0 ? {
     type: "Feature",
     geometry: {
       type: "LineString",
       coordinates: route.map(point => [point.longitude, point.latitude]),
     },
-  } : null;
+  } : null, [route]);
 
-  // Convert safety points to GeoJSON (for visualizing safety along the route)
-  const safetyPointsGeoJSON = route.length > 0 ? {
+  const safetyPointsGeoJSON = useMemo(() => route.length > 0 ? {
     type: "FeatureCollection",
     features: route.map((point, index) => ({
       type: "Feature",
@@ -176,10 +175,9 @@ export default function Map({
         safetyScore: 0.5 + 0.5 * Math.sin(index / route.length * Math.PI)
       }
     }))
-  } : null;
+  } : null, [route]);
 
-  // Convert crime hotspots to GeoJSON
-  const crimeGeoJSON = {
+  const crimeGeoJSON = useMemo(() => ({
     type: "FeatureCollection",
     features: crimeHotspots.map(hotspot => ({
       type: "Feature",
@@ -192,10 +190,10 @@ export default function Map({
         severity: hotspot.severity,
       },
     })),
-  };
+  }), [crimeHotspots]);
 
   return (
-    <div className="flex-1 h-screen relative">
+    <div className="flex-1 h-screen relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyber-purple/50" tabIndex={0} role="img" aria-label="Interactive map showing route, safety scores, and location markers">
       <MapGL
         ref={mapRef}
         {...viewState}
@@ -251,8 +249,24 @@ export default function Map({
 
         {/* Source Marker - using Mapbox Marker component for geographic positioning */}
         {source.lat && source.lng && (
-          <Marker longitude={source.lng} latitude={source.lat} anchor="center">
-            <div className="relative">
+          <Marker
+            longitude={source.lng}
+            latitude={source.lat}
+            anchor="center"
+            draggable={false}
+          >
+            <div
+              tabIndex={0}
+              role="img"
+              aria-label="Source location marker"
+              className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyber-green focus-visible:ring-offset-2"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  // Trigger click action if needed
+                }
+              }}
+            >
               <div className="w-6 h-6 bg-cyber-green rounded-full shadow-neon-green animate-pulse border-2 border-white flex items-center justify-center">
                 <div className="w-3 h-3 bg-white rounded-full" />
               </div>
@@ -263,8 +277,24 @@ export default function Map({
 
         {/* Destination Marker - using Mapbox Marker component for geographic positioning */}
         {destination.lat && destination.lng && (
-          <Marker longitude={destination.lng} latitude={destination.lat} anchor="center">
-            <div className="relative">
+          <Marker
+            longitude={destination.lng}
+            latitude={destination.lat}
+            anchor="center"
+            draggable={false}
+          >
+            <div
+              tabIndex={0}
+              role="img"
+              aria-label="Destination location marker"
+              className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyber-pink focus-visible:ring-offset-2"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  // Trigger click action if needed
+                }
+              }}
+            >
               <div className="w-6 h-6 bg-cyber-pink rounded-full shadow-neon-pink animate-pulse border-2 border-white flex items-center justify-center">
                 <div className="w-3 h-3 bg-white rounded-full" />
               </div>
@@ -303,20 +333,20 @@ export default function Map({
         <div className="space-y-2 text-gray-400 text-xs">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-cyber-green rounded-full" />
-            <span>Safest Route</span>
+            <span className="text-white">Safest Route</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-cyber-cyan rounded-full" />
-            <span>Fastest Route</span>
+            <span className="text-white">Fastest Route</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-cyber-red rounded-full" />
-            <span>Crime Hotspots</span>
+            <span className="text-white">Crime Hotspots</span>
           </div>
           <div className="flex items-center gap-2 py-2 border-t border-cyber-purple/20">
             <div className="flex items-center gap-2 w-full">
               <div className="w-3 h-3 bg-cyber-yellow rounded-full" />
-              <span>Satellite Mode</span>
+              <span className="text-white">Satellite Mode</span>
             </div>
             <div className="flex items-center gap-2 w-full justify-end">
               <label className="relative inline-flex items-center w-8 h-4">
@@ -325,8 +355,9 @@ export default function Map({
                   className="sr-only peer"
                   checked={mapMode === 'satellite'}
                   onChange={(e) => setMapMode(e.target.checked ? 'satellite' : 'cyberpunk')}
+                  aria-label="Toggle satellite map view"
                 />
-                <div className="w-8 h-4 bg-gray-200 rounded-full peer peer-ful-yellow after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:h-3 after:w-3 after:rounded-full after:transition-all peer-checked:after:translate-x-4"></div>
+                <div className="w-8 h-4 bg-gray-200 rounded-full peer peer-checked:bg-gray-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:h-3 after:w-3 after:rounded-full after:transition-all peer-checked:after:translate-x-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyber-purple/50"></div>
               </label>
             </div>
           </div>
@@ -335,7 +366,7 @@ export default function Map({
 
       {/* Zoom Instructions */}
       <div className="absolute bottom-4 right-4 bg-cyber-dark/80 backdrop-blur-xl rounded-xl p-4 border border-cyber-purple/30">
-        <div className="text-gray-400 text-xs space-y-1">
+        <div className="text-white text-xs space-y-1">
           <div>Zoom in to see 3D buildings</div>
           <div className="text-cyber-cyan">Click map to set Source/Destination</div>
         </div>

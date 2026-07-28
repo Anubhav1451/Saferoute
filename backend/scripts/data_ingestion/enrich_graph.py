@@ -1,8 +1,9 @@
 import os
 import sys
+import math
 import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 
 # Ensure backend root is in path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -29,22 +30,6 @@ PRIORITY_MAP = {
     'residential': 7,
 }
 
-# Speed priority mapping
-SPEED_PRIORITY_MAP = {
-    'motorway': 1,
-    'motorway_link': 2,
-    'trunk': 2,
-    'trunk_link': 3,
-    'primary': 3,
-    'primary_link': 4,
-    'secondary': 4,
-    'secondary_link': 5,
-    'tertiary': 5,
-    'tertiary_link': 6,
-    'unclassified': 6,
-    'residential': 7,
-}
-
 class GraphEnricher(BaseImporter):
     source_name = "graph_enricher"
     batch_size = 5000
@@ -55,71 +40,17 @@ class GraphEnricher(BaseImporter):
         self._node_cache: Dict[int, GraphNode] = {}
 
     def _load_caches(self, session: Session):
+        """Load OSMWay and GraphNode data as lightweight dicts instead of full ORM objects."""
         if not self._way_cache:
-            for way in session.query(OSMWay).all():
-                self._way_cache[way.id] = way
+            self._way_cache = {}
+            for w in session.query(OSMWay.id, OSMWay.highway, OSMWay.lanes, OSMWay.oneway).yield_per(50000):
+                self._way_cache[w.id] = w
+            self.logger.info(f"Loaded {len(self._way_cache):,} OSMWay records into cache")
         if not self._node_cache:
-            for node in session.query(GraphNode).all():
-                self._node_cache[node.id] = node
-
-    def _calculate_edge_geometry(self, session: Session, edge: GraphEdge) -> Tuple[float, float, float, float, float, float]:
-        node_src = self._node_cache.get(edge.source_node_id)
-        node_dst = self._node_cache.get(edge.dest_node_id)
-        if node_src is None or node_dst is None:
-            return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-        
-        lat1, lon1 = node_src.latitude, node_src.longitude
-        lat2, lon2 = node_dst.latitude, node_dst.longitude
-        
-        # Midpoint
-        mid_lat = (lat1 + lat2) / 2
-        mid_lon = (lon1 + lon2) / 2
-        
-        # BBox
-        min_lat, max_lat = min(lat1, lat2), max(lat1, lat2)
-        min_lon, max_lon = min(lon1, lon2), max(lon1, lon2)
-        
-        # Heading (Bearing)
-        import math
-        phi1, phi2 = math.radians(lat1), math.radians(lat2)
-        dlambda = math.radians(lon2 - lon1)
-        y = math.sin(dlambda) * math.cos(phi2)
-        x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(dlambda)
-        heading = (math.degrees(math.atan2(y, x)) + 360) % 360
-        
-        return mid_lat, mid_lon, min_lat, min_lon, max_lat, max_lon, heading
-
-    def enrich_edge(self, session: Session, edge: GraphEdge):
-        way = self._way_cache.get(edge.osm_way_id)
-        if not way:
-            return
-
-        # Basic attributes from OSMWay tags
-        # These were already in OSMWay but we migrate them to GraphEdge for routing speed
-        highway = way.highway
-        
-        edge.priority = PRIORITY_MAP.get(highway, 10)
-        edge.speed_priority = SPEED_PRIORITY_MAP.get(highway, 10)
-        edge.access = way.tags.get('access') if hasattr(way, 'tags') else None 
-        # Note: OSMWay in our model doesn't have a 'tags' JSON field yet, 
-        # but we have explicit columns. We should use the columns.
-        
-        # Fixing the attribute access based on the model
-        edge.roundabout = (way.highway == 'roundabout') # Simple approximation
-        edge.surface = None # Need to add surface to OSMWay model if we want it
-        edge.smoothness = None
-        edge.lit = None
-        edge.lanes = int(way.lanes) if way.lanes and way.lanes.isdigit() else None
-        
-        # Spatial properties
-        mid_lat, mid_lon, min_lat, min_lon, max_lat, max_lon, heading = self._calculate_edge_geometry(session, edge)
-        edge.mid_lat = mid_lat
-        edge.mid_lon = mid_lon
-        edge.bbox_min_lat = min_lat
-        edge.bbox_min_lon = min_lon
-        edge.bbox_max_lat = max_lat
-        edge.bbox_max_lon = max_lon
-        edge.heading = heading
+            self._node_cache = {}
+            for n in session.query(GraphNode.id, GraphNode.osm_node_id, GraphNode.latitude, GraphNode.longitude).yield_per(50000):
+                self._node_cache[n.id] = n
+            self.logger.info(f"Loaded {len(self._node_cache):,} GraphNode records into cache")
 
     def run(self, dry_run: bool = False, metadata: Optional[dict] = None) -> Dict[str, Any]:
         if dry_run:
@@ -137,7 +68,10 @@ class GraphEnricher(BaseImporter):
 
             bulk_chunk = 5000
             enriched = 0
-            while True:
+            MAX_ITERATIONS = 500  # ETL-4: guard against infinite loop
+            iteration = 0
+            while iteration < MAX_ITERATIONS:
+                iteration += 1
                 edges = session.query(GraphEdge).filter(GraphEdge.mid_lat == None).limit(bulk_chunk).all()
                 if not edges:
                     break
@@ -159,7 +93,6 @@ class GraphEnricher(BaseImporter):
                         mid_lat = (lat1 + lat2) / 2
                         mid_lon = (lon1 + lon2) / 2
 
-                        import math
                         phi1, phi2 = math.radians(lat1), math.radians(lat2)
                         dlambda = math.radians(lon2 - lon1)
                         y = math.sin(dlambda) * math.cos(phi2)
@@ -169,7 +102,7 @@ class GraphEnricher(BaseImporter):
                         updates.append({
                             "id": edge.id,
                             "priority": PRIORITY_MAP.get(highway, 10),
-                            "speed_priority": SPEED_PRIORITY_MAP.get(highway, 10),
+                            "speed_priority": PRIORITY_MAP.get(highway, 10),
                             "mid_lat": mid_lat,
                             "mid_lon": mid_lon,
                             "heading": heading,
@@ -188,6 +121,9 @@ class GraphEnricher(BaseImporter):
                     session.commit()
                 enriched += len(updates)
                 self.logger.info(f"Enriched {enriched}/{total} edges...")
+
+            if iteration >= MAX_ITERATIONS:
+                self.logger.warning("Enrichment stopped: hit MAX_ITERATIONS=%d with %d edges remaining", MAX_ITERATIONS, total - enriched)
 
             self._counters["inserted"] = enriched
             self.end_batch("COMPLETED")

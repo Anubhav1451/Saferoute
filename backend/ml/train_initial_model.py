@@ -10,7 +10,7 @@ import logging
 # Add the backend directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from app.ml.train_model import train_model
+from ml.train_model import train_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

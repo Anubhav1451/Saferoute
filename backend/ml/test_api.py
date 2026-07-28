@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from fastapi.testclient import TestClient
-from app.main import app
+from backend.app.main import app
 
 def test_safety_score_endpoint():
     """Test the /api/v1/ai/safety-score endpoint."""
@@ -100,7 +100,7 @@ def main():
 
     all_passed = True
 
-    all_passed &= test_safety_score_endpoint">
+    all_passed &= test_safety_score_endpoint()
     all_passed &= test_safety_score_endpoint_defaults()
 
     print("\n" + "=" * 50)

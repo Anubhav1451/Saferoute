@@ -4,7 +4,7 @@ Test the routing service with safety nodes along the path.
 """
 import sys
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
 # Add the backend directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__)))
@@ -18,6 +18,30 @@ def test_routing_with_safety_nodes():
     """Test the routing service with safety nodes along the path."""
     # Mock the database session
     db = Mock(spec=Session)
+
+    # Mock the database queries for black_spots and accident_records
+    def mock_query(*args, **kwargs):
+        # args[0] is self, args[1] is the model class
+        if len(args) >= 2:
+            model = args[1]
+        else:
+            # If we can't get the model, return empty list
+            query_mock = MagicMock()
+            query_mock.all.return_value = []
+            return query_mock
+
+        query_mock = MagicMock()
+        if model.__name__ == 'HighwayBlackSpot':
+            query_mock.all.return_value = []
+        elif model.__name__ == 'AccidentRecord':
+            query_mock.all.return_value = []
+        else:
+            # For other models (SafetyNode, CrimeHotspot, UserReport, RoadSegmentRisk, etc.)
+            # we'll handle this in the specific method mocks below
+            query_mock.all.return_value = []
+        return query_mock
+
+    db.query.side_effect = mock_query
 
     # Create the routing service
     routing_service = SafetyRoutingService(db)
@@ -51,11 +75,11 @@ def test_routing_with_safety_nodes():
     def mock_get_nearby_safety_data_bounding_box(min_lat, max_lat, min_lon, max_lon):
         # For simplicity, we return the same safety nodes regardless of location
         # In reality, we would filter by the bounding box, but for this test we want to see if they are used
-        return (safety_nodes, [], [])
+        return (safety_nodes, [], [], [])
 
     # Also mock the radius-based version for completeness
     def mock_get_nearby_safety_data(lat, lon, radius_meters=None):
-        return (safety_nodes, [], [])
+        return (safety_nodes, [], [], [])
 
     # Patch both methods
     with patch('app.services.routing.SafetyRoutingService.get_nearby_safety_data_bounding_box') as mock_bounding_box, \
@@ -98,15 +122,15 @@ def test_routing_with_safety_nodes():
 
             # Print first and last few coordinates of each route
             print("\nSafest route (first 3 and last 3):")
-            for i in range(0, 3):
+            for i in range(min(3, len(safest_route))):
                 print(f"  {i}: {safest_route[i]}")
-            for i in range(len(safest_route)-3, len(safest_route)):
+            for i in range(max(0, len(safest_route)-3), len(safest_route)):
                 print(f"  {i}: {safest_route[i]}")
 
             print("\nFastest route (first 3 and last 3):")
-            for i in range(0, 3):
+            for i in range(min(3, len(fastest_route))):
                 print(f"  {i}: {fastest_route[i]}")
-            for i in range(len(fastest_route)-3, len(fastest_route)):
+            for i in range(max(0, len(fastest_route)-3), len(fastest_route)):
                 print(f"  {i}: {fastest_route[i]}")
 
 if __name__ == '__main__':

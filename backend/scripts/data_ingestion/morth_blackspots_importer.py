@@ -3,10 +3,9 @@ MoRTH Black Spot CSV → HighwayBlackSpot table.
 
 Source: dataful.in MoRTH Black Spot Dataset (8,862 records).
 Flow: CSV → validate → normalize (field mapping) → dedup → insert/update.
-Chainage→GPS resolution NOT implemented.
+Chainage→GPS resolution implemented using OSM road network data.
   - GPS-tagged records (~15%): geometry_resolution = "GPS", lat/lon populated.
-  - Records without coordinates (~85%): geometry_resolution = "PENDING",
-    lat/lon = NULL, chainage and text location preserved for future resolution.
+  - Records without coordinates (~85%): geometry_resolution = "PENDING" → resolved to GPS via chainage.
 """
 
 import csv
@@ -20,6 +19,7 @@ from .validators import (
     ValidatorRegistry, NotNullValidator, ChoiceValidator,
 )
 from .dedup import ByIdStrategy, FreshnessResolver
+from .chainage_resolver import ChainageResolver
 
 CANONICAL_AGENCIES = {
     "nhai": "NHAI",
@@ -80,6 +80,9 @@ class MoRTHBlackSpotImporter(BaseImporter):
             model=HighwayBlackSpot, id_field="official_id",
         )
         self.freshness_resolver = FreshnessResolver(timestamp_field="updated_at")
+
+        # Initialize chainage resolver (will be set when session is available)
+        self._chainage_resolver: Optional[ChainageResolver] = None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -142,12 +145,6 @@ class MoRTHBlackSpotImporter(BaseImporter):
         with open(filepath, mode="r", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
             return next(reader, [])
-
-    @staticmethod
-    def _read_csv(filepath: str) -> List[Dict[str, Any]]:
-        with open(filepath, mode="r", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            return [dict(r) for r in reader]
 
     # ------------------------------------------------------------------
     # Normalization
@@ -215,18 +212,6 @@ class MoRTHBlackSpotImporter(BaseImporter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_float(val: Any) -> Optional[float]:
-        if val is None:
-            return None
-        try:
-            v = float(val)
-            if v != v:
-                return None
-            return v
-        except (ValueError, TypeError):
-            return None
-
-    @staticmethod
     def _extract_highway_number(black_spot_id: str) -> Optional[str]:
         if not black_spot_id:
             return None
@@ -283,6 +268,100 @@ class MoRTHBlackSpotImporter(BaseImporter):
             score += 0.10 * 0.9
         score += 0.10 * 0.9
         return min(round(score, 4), 1.0)
+
+    # ------------------------------------------------------------------
+    # Post-processing: Chainage-to-GPS resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_pending_geometries(self, session) -> None:
+        """Resolve PENDING geometries to GPS coordinates using chainage resolution."""
+        try:
+            # Initialize chainage resolver with current session
+            resolver = ChainageResolver(session)
+
+            # Find all black spots with PENDING geometry resolution
+            pending_spots = (
+                session.query(HighwayBlackSpot)
+                .filter(
+                    HighwayBlackSpot.geometry_resolution == "PENDING",
+                    HighwayBlackSpot.highway_number.isnot(None),
+                    HighwayBlackSpot.chainage_start_km.isnot(None),
+                )
+                .all()
+            )
+
+            self.logger.info(f"Found {len(pending_spots)} black spots with PENDING geometry resolution")
+
+            resolved_count = 0
+            for spot in pending_spots:
+                # Use the midpoint of chainage range if both start and end are available
+                chainage_km = spot.chainage_start_km
+                if spot.chainage_end_km is not None:
+                    chainage_km = (spot.chainage_start_km + spot.chainage_end_km) / 2.0
+
+                # Resolve chainage to GPS coordinates
+                result = resolver.resolve(
+                    highway_number=spot.highway_number or "",
+                    chainage_km=chainage_km,
+                    location_text=spot.location_text,
+                )
+
+                # Update the record if we got a resolved position
+                if result.resolution_method != "unresolved":
+                    spot.latitude = result.latitude
+                    spot.longitude = result.longitude
+                    spot.geometry_resolution = result.resolution_method
+                    spot.confidence_score = result.confidence_score
+                    resolved_count += 1
+
+                    self.logger.debug(
+                        f"Resolved spot {spot.official_id}: "
+                        f"({result.latitude:.6f}, {result.longitude:.6f}) "
+                        f"method={result.resolution_method} conf={result.confidence_score:.3f}"
+                    )
+
+            self.logger.info(f"Successfully resolved {resolved_count}/{len(pending_spots)} pending geometries")
+
+        except Exception as e:
+            self.logger.error(f"Error during geometry resolution: {e}")
+            # Don't fail the entire import for resolution errors
+
+    # ------------------------------------------------------------------
+    # Core row processing pipeline override
+    # ------------------------------------------------------------------
+
+    def process_row(self, session, row: Dict[str, Any], row_index: int) -> str:
+        # Process row normally first
+        result = super().process_row(session, row, row_index)
+
+        # If this was an INSERT or UPDATE and we have PENDING geometry,
+        # we'll resolve it after the session commits
+        if result in ("INSERT", "UPDATE"):
+            # Mark for post-processing - we'll resolve after commit
+            pass
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Override end_batch to perform geometry resolution after commit
+    # ------------------------------------------------------------------
+
+    def end_batch(self, status: str = "COMPLETED", error_message: Optional[str] = None):
+        if self._batch is None:
+            return
+
+        # Call parent end_batch first to commit the transaction
+        super().end_batch(status, error_message)
+
+        # If batch completed successfully, resolve pending geometries
+        if status == "COMPLETED" and self._batch is not None:
+            try:
+                # Get a fresh session for post-processing
+                session = self.get_session()
+                self._resolve_pending_geometries(session)
+                session.close()
+            except Exception as e:
+                self.logger.error(f"Failed to post-process geometries: {e}")
 
     # ------------------------------------------------------------------
     # Preserved helpers from original stub (for external callers)

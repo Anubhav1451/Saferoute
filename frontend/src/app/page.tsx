@@ -1,29 +1,125 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import Sidebar from "@/components/Sidebar";
 import Map from "@/components/Map";
+import SkeletonSidebar from "@/components/SkeletonSidebar";
+import SkeletonMap from "@/components/SkeletonMap";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// Simple error boundary component
+function ErrorBoundary({ children }: { children: React.ReactNode }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return (
+      <div className="p-6 bg-red-50 text-red-700 rounded">
+        <h2 className="text-lg font-bold mb-2">Something went wrong</h2>
+        <p className="mb-4">Failed to load route data. Please try again.</p>
+        <button
+          onClick={() => setHasError(false)}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  return children;
+}
+
+// Resource for route data with Suspense support
+function createRouteResource(source: { lat: number; lng: number }, destination: { lat: number; lng: number }, routeType: "safest" | "balanced" | "fastest") {
+  let status: 'pending' | 'success' | 'error' = 'pending';
+  let result: { route: any[]; safestSafetyScore: number | null; fastestSafetyScore: number | null } | null = null;
+  let error: Error | null = null;
+  let promise: Promise<any> | null = null;
+
+  const executor = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/calculate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source: { latitude: source.lat, longitude: source.lng },
+          destination: { latitude: destination.lat, longitude: destination.lng },
+          safety_weight: routeType === "safest" ? 0.7 : routeType === "balanced" ? 0.5 : 0.3,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success && data.data) {
+        status = 'success';
+        result = {
+          route: routeType === "safest" ? (data.data.safest_route ?? []) : (data.data.fastest_route ?? []),
+          safestSafetyScore: data.data.safest_safety_score ?? null,
+          fastestSafetyScore: data.data.fastest_safety_score ?? null,
+        };
+      } else {
+        status = 'error';
+        error = new Error(data?.message || data?.error || "Failed to calculate route");
+      }
+    } catch (err) {
+      status = 'error';
+      error = err instanceof Error ? err : new Error(String(err));
+    }
+  };
+
+  // Start fetching immediately
+  promise = executor();
+
+  return {
+    read() {
+      if (status === 'pending') {
+        // Throw the promise to trigger Suspense
+        if (promise) throw promise;
+        // Fallback in case promise is null (shouldn't happen)
+        throw new Error("Promise is null");
+      } else if (status === 'error') {
+        // Throw the error to be caught by error boundary
+        if (error) throw error;
+        // Fallback in case error is null (shouldn't happen)
+        throw new Error("Error is null");
+      } else {
+        // Return the result
+        if (result) return result;
+        // Fallback in case result is null (shouldn't happen when status is success)
+        return { route: [], safestSafetyScore: null, fastestSafetyScore: null };
+      }
+    },
+    // Allow refetching when inputs change
+    refetch() {
+      status = 'pending';
+      result = null;
+      error = null;
+      promise = executor();
+    }
+  };
+}
 
 export default function Home() {
   const [source, setSource] = useState({ lat: 28.6315, lng: 77.2167 });
   const [destination, setDestination] = useState({ lat: 28.6350, lng: 77.2200 });
-  const [routeType, setRouteType] = useState<"safest" | "fastest">("safest");
+  const [routeType, setRouteType] = useState<"safest" | "balanced" | "fastest">("safest");
   const [crimeHotspots, setCrimeHotspots] = useState<any[]>([]);
-  const [route, setRoute] = useState<any[]>([]);
   const [currentLocation, setCurrentLocation] = useState({ lat: 28.6315, lng: 77.2167 });
   const [triggerFlyTo, setTriggerFlyTo] = useState(false);
   const [mapClickStep, setMapClickStep] = useState<'source' | 'destination' | 'both'>('source');
-  // New state for safety scores and loading
-  const [safestSafetyScore, setSafestSafetyScore] = useState<number | null>(null);
-  const [fastestSafetyScore, setFastestSafetyScore] = useState<number | null>(null);
-  const [routeLoading, setRouteLoading] = useState(false);
-  const [routeError, setRouteError] = useState<string | null>(null);
+  // New state for safety scores and loading (kept for SOS and AI insights)
   const [sosLoading, setSosLoading] = useState(false);
   const [sosError, setSosError] = useState<string | null>(null);
   const [aiInsights, setAiInsights] = useState<any>(null);
+  const isMounted = useRef(false);
+
+  // Create resource for route data - will refetch when source/destination/routeType change
+  const routeResource = useMemo(() => createRouteResource(source, destination, routeType), [source, destination, routeType]);
 
   // Attempt to get user's current location on initial load
   useEffect(() => {
+    isMounted.current = true;
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -39,9 +135,13 @@ export default function Home() {
     } else {
       console.warn("Geolocation not supported by browser");
     }
+
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
-  const handleLocationSelect = (type: 'source' | 'dest', lat: number, lng: number) => {
+  const handleLocationSelect = useCallback((type: 'source' | 'dest', lat: number, lng: number) => {
     if (type === 'source') {
       setSource({ lat, lng });
       setCurrentLocation({ lat, lng });
@@ -50,9 +150,9 @@ export default function Home() {
       setDestination({ lat, lng });
       setMapClickStep('both');
     }
-  };
+  }, [setSource, setCurrentLocation, setDestination, setMapClickStep]);
 
-  const handleMapClick = (lng: number, lat: number) => {
+  const handleMapClick = useCallback((lng: number, lat: number) => {
     if (mapClickStep === 'source') {
       setSource({ lat, lng });
       setCurrentLocation({ lat, lng });
@@ -66,77 +166,17 @@ export default function Home() {
       setCurrentLocation({ lat, lng });
       setMapClickStep('destination');
     }
-  };
+  }, [setSource, setCurrentLocation, setDestination, setMapClickStep]);
 
-  const handleRouteCalculate = async (src: { lat: number; lng: number }, dest: { lat: number; lng: number }) => {
-    setRouteLoading(true);
-    setRouteError(null);
-    setSource(src);
-    setDestination(dest);
-    setCurrentLocation(src);
+  const handleRouteTypeChange = useCallback((type: "safest" | "balanced" | "fastest") => {
+    setRouteType(type);
+  }, [setRouteType]);
 
-    try {
-      // Call backend API to calculate route
-      const response = await fetch("http://localhost:8000/api/v1/calculate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          source: { latitude: src.lat, longitude: src.lng },
-          destination: { latitude: dest.lat, longitude: dest.lng },
-          safety_weight: routeType === "safest" ? 0.7 : 0.3,
-        }),
-      });
-
-      const data = await response.json();
-      console.log('[FRONTEND] Raw API response:', JSON.stringify(data, null, 2));
-
-      if (response.ok && data.success && data.data) {
-        const routeData = data.data;
-        console.log('[FRONTEND] routeData keys:', Object.keys(routeData));
-        console.log('[FRONTEND] safest_route length:', routeData.safest_route?.length);
-        console.log('[FRONTEND] fastest_route length:', routeData.fastest_route?.length);
-
-        setRoute(routeType === "safest"
-          ? (routeData.safest_route ?? [])
-          : (routeData.fastest_route ?? []));
-        setSafestSafetyScore(routeData.safest_safety_score ?? null);
-        setFastestSafetyScore(routeData.fastest_safety_score ?? null);
-
-        // Get real crime hotspots from AI safety score for route points (sample a few points)
-        // For demo, we'll get safety scores for a few points along the route to show AI insights
-        if (routeType === "safest" && routeData.safest_route?.length > 0) {
-          // Sample midpoint of route for AI insight
-          const midPoint = routeData.safest_route[Math.floor(routeData.safest_route.length / 2)];
-          const aiResponse = await fetch(`http://localhost:8000/api/v1/ai/safety-score?latitude=${midPoint.latitude}&longitude=${midPoint.longitude}&radius=500`);
-          if (aiResponse.ok) {
-            const aiData = await aiResponse.json();
-            setAiInsights(aiData.data);
-          }
-        }
-
-        // Trigger flyTo animation after route is calculated
-        setTriggerFlyTo(true);
-        setTimeout(() => setTriggerFlyTo(false), 3000);
-      } else {
-        const errorMsg = data?.message || data?.error || "Failed to calculate route";
-        console.error('[FRONTEND] API error response:', data);
-        setRouteError(errorMsg);
-      }
-    } catch (error) {
-      console.error("Error calculating route:", error);
-      setRouteError("Network error. Please check your connection.");
-    } finally {
-      setRouteLoading(false);
-    }
-  };
-
-  const handleSOSTrigger = async (coordinates: { lat: number; lng: number }) => {
+  const handleSOSTrigger = useCallback(async (coordinates: { lat: number; lng: number }) => {
     setSosLoading(true);
     setSosError(null);
     try {
-      const response = await fetch("http://localhost:8000/api/v1/sos/trigger", {
+      const response = await fetch(`${API_BASE_URL}/api/v1/sos/trigger`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -161,38 +201,101 @@ export default function Home() {
     } finally {
       setSosLoading(false);
     }
-  };
+  }, [setSosLoading, setSosError]);
+
+  // Fetch AI insights when we have route data (from resource)
+  useEffect(() => {
+    // Try to read route data - if it throws, we'll catch and handle via Suspense/error boundary
+    let routeData;
+    try {
+      routeData = routeResource.read();
+    } catch (err) {
+      // If it's a promise, Suspense will handle it
+      // If it's an error, error boundary will handle it
+      return;
+    }
+
+    // If we have route data, fetch AI insights for safest route midpoint
+    if (routeType === "safest" && routeData.route.length > 0) {
+      // Sample midpoint of route for AI insight
+      const midPoint = routeData.route[Math.floor(routeData.route.length / 2)];
+      const fetchAiInsights = async () => {
+        try {
+          const aiResponse = await fetch(`${API_BASE_URL}/api/v1/ai/safety-score?latitude=${midPoint.latitude}&longitude=${midPoint.longitude}&radius=500`);
+          if (aiResponse.ok) {
+            const aiData = await aiResponse.json();
+            setAiInsights(aiData.data);
+          }
+        } catch (e) {
+          console.warn("Could not fetch AI insights:", e);
+        }
+      };
+
+      fetchAiInsights();
+    } else {
+      setAiInsights(null);
+    }
+  }, [routeResource, routeType]);
+
+  // Extract route data from resource (will throw if pending/error, handled by boundaries)
+  let routeData;
+  try {
+    routeData = routeResource.read();
+  } catch (err) {
+    // If we get here, it means the error wasn't caught by Suspense/error boundary
+    // This shouldn't happen in normal flow, but we'll set a fallback
+    routeData = { route: [], safestSafetyScore: null, fastestSafetyScore: null };
+  }
+
+  const { route, safestSafetyScore, fastestSafetyScore } = routeData;
 
   return (
-    <main className="flex h-screen bg-cyber-black overflow-hidden">
-      <Sidebar
-        onRouteCalculate={handleRouteCalculate}
-        onSOSTrigger={handleSOSTrigger}
-        currentLocation={currentLocation}
-        onLocationSelect={handleLocationSelect}
-        routeType={routeType}
-        routeData={route}
-        sourceCoords={source}
-        destCoords={destination}
-        safestSafetyScore={safestSafetyScore}
-        fastestSafetyScore={fastestSafetyScore}
-        routeLoading={routeLoading}
-        routeError={routeError}
-        sosLoading={sosLoading}
-        sosError={sosError}
-        aiInsights={aiInsights}
-      />
-      <Map
-        source={source}
-        destination={destination}
-        routeType={routeType}
-        crimeHotspots={crimeHotspots}
-        route={route}
-        triggerFlyTo={triggerFlyTo}
-        onMapClick={handleMapClick}
-        safestSafetyScore={safestSafetyScore}
-        fastestSafetyScore={fastestSafetyScore}
-      />
-    </main>
+    <ErrorBoundary>
+      <main className="flex h-screen bg-cyber-black overflow-hidden" role="main" aria-label="Main application interface">
+        <Suspense fallback={<div className="flex h-screen bg-cyber-black overflow-hidden">
+            <SkeletonSidebar />
+            <SkeletonMap />
+        </div>}>
+          <Sidebar
+            onRouteCalculate={(src, dest) => {
+              // Update source/destination and trigger refetch
+              setSource(src);
+              setDestination(dest);
+              setCurrentLocation(src);
+              // Trigger refetch by updating routeType (or we could call refetch on resource)
+              // We'll update routeType to trigger refetch via useMemo dependency
+              // But we don't want to change routeType, so we'll call refetch directly
+              routeResource.refetch();
+            }}
+            onSOSTrigger={handleSOSTrigger}
+            currentLocation={currentLocation}
+            onLocationSelect={handleLocationSelect}
+            onRouteTypeChange={handleRouteTypeChange}
+            routeType={routeType}
+            routeData={route}
+            sourceCoords={source}
+            destCoords={destination}
+            safestSafetyScore={safestSafetyScore}
+            fastestSafetyScore={fastestSafetyScore}
+            sosLoading={sosLoading}
+            sosError={sosError}
+            aiInsights={aiInsights}
+            role="complementary"
+            aria-label="Navigation sidebar"
+          />
+          <Map
+            source={source}
+            destination={destination}
+            routeType={routeType}
+            crimeHotspots={crimeHotspots}
+            route={route}
+            triggerFlyTo={triggerFlyTo}
+            onMapClick={handleMapClick}
+            safestSafetyScore={safestSafetyScore}
+            fastestSafetyScore={fastestSafetyScore}
+          />
+        </Suspense>
+      </main>
+    </ErrorBoundary>
   );
 }

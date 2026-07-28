@@ -4,17 +4,9 @@ from typing import List, Tuple, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.models import GraphNode, GraphEdge, OSMWayNode
+from app.utils.geospatial import haversine_distance
 
 logger = logging.getLogger(__name__)
-
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate distance between two points in meters."""
-    R = 6371000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
 def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate bearing between two points in degrees."""

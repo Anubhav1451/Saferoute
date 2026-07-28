@@ -57,7 +57,7 @@ else:
 app = FastAPI(
     title="SafeRoute AI API",
     description="Smart navigation API with safety scores, crime data, and environmental factors",
-    version="0.1.0"
+    version="1.0.0"
 )
 
 
@@ -73,6 +73,22 @@ app.add_middleware(
 # Add exception handlers
 app.add_exception_handler(Exception, general_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
+
+# Add authentication middleware
+from app.api.middleware.auth import AuthMiddleware
+app.add_middleware(AuthMiddleware)
+
+# Add security middleware
+from app.api.middleware.timeout import TimeoutMiddleware
+from app.api.middleware.request_size import RequestSizeLimitMiddleware
+from app.api.middleware.rate_limit import RateLimitMiddleware
+from app.api.middleware import SecurityHeadersMiddleware, RequestLoggingMiddleware
+
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(TimeoutMiddleware)
 
 # Include API routes
 app.include_router(v1_router, prefix="/api/v1")
@@ -117,6 +133,29 @@ async def health_check(db: Session = Depends(get_db)):
         health_status["status"] = "degraded"
 
     return health_status
+
+
+@app.get("/metrics", tags=["monitoring"])
+async def metrics():
+    """Return basic system metrics for the current process."""
+    try:
+        import psutil
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        cpu_percent = process.cpu_percent(interval=0.1)
+        return {
+            "cpu_percent": cpu_percent,
+            "memory_rss_mb": memory_info.rss / 1024 / 1024,
+            "memory_vms_mb": memory_info.vms / 1024 / 1024,
+            "open_files": len(process.open_files()),
+            "num_threads": process.num_threads(),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "timestamp": time.time()
+        }
 
 @app.get("/debug/env", tags=["debug"])
 async def debug_env():

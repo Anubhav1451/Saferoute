@@ -11,7 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "SafeRoute AI API"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
     # Server
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # Security
-    SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32))
+    SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(32), env="SECRET_KEY")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ALGORITHM: str = "HS256"
     # CORS
@@ -82,10 +82,57 @@ class Settings(BaseSettings):
 
     # Mapbox API Configuration
     MAPBOX_DIRECTIONS_TIMEOUT_SEC: int = 15      # Timeout for Mapbox Directions API calls
-    MAPBOX_TOKEN: str                            # Mapbox access token
+    MAPBOX_TOKEN: str                            # Mapbox access token (required, no default)
 
-    # Rate Limiting (placeholder for future implementation)
+    # Rate Limiting
+    RATE_LIMIT_ENABLED: bool = False
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
+    RATE_LIMIT_BURST: int = 10
+    RATE_LIMIT_PER_METHOD: bool = True  # Apply limits per HTTP method
+    RATE_LIMIT_EXEMPT_PATHS: list = ["/", "/health", "/docs", "/redoc", "/openapi.json", "/debug/env"]
+
+    # Request Size Limits
+    REQUEST_SIZE_LIMIT_ENABLED: bool = False
+    REQUEST_SIZE_LIMIT_BYTES: int = 5 * 1024 * 1024  # 5MB default
+    REQUEST_SIZE_LIMIT_EXEMPT_PATHS: list = ["/", "/health", "/docs", "/redoc", "/openapi.json", "/debug/env"]
+
+    # Timeout Handling
+    REQUEST_TIMEOUT_ENABLED: bool = False
+    REQUEST_TIMEOUT_SECONDS: int = 30
+    DB_QUERY_TIMEOUT_SECONDS: int = 10
+
+    # Security Headers
+    SECURITY_HEADERS_ENABLED: bool = True
+    STRICT_TRANSPORT_SECURITY_MAX_AGE: int = 31536000  # 1 year
+    CONTENT_SECURITY_POLICY: str = "default-src 'self'"
+
+    # Trusted Proxy
+    TRUSTED_PROXY_ENABLED: bool = False
+    TRUSTED_PROXY_COUNT: int = 1  # Number of trusted proxy hops
+
+    # Slow Request Logging
+    SLOW_REQUEST_THRESHOLD: float = 1.0  # Seconds
+    SLOW_REQUEST_LOG_ENABLED: bool = True
+
+    # API Key Authentication
+    API_KEY_REQUIRED: bool = False
+    API_KEYS: list = []
+
+    @property
+    def api_keys_set(self) -> bool:
+        """Check if API keys have been configured."""
+        return bool(self.API_KEYS)
+
+    # Weather Cache Configuration
+    WEATHER_CACHE_MAX_SIZE: int = 1000
+    WEATHER_CACHE_TTL_SECONDS: int = 300
+
+    # OSM Importer Configuration
+    OSM_DRIVABLE_HIGHWAYS: list = [
+        "motorway", "trunk", "primary", "secondary", "tertiary",
+        "unclassified", "residential", "service", "living_street",
+        "pedestrian", "track", "footway", "cycleway", "path"
+    ]
 
     # File paths
     BASE_DIR: Path = BASE_DIR

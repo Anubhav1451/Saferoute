@@ -353,7 +353,10 @@ def predict_safety_score(
 
         # Get model and predict
         model = get_safety_model()
-        safety_score = model.predict(features)
+        # Convert dataclass to dictionary for the predict method
+        from dataclasses import asdict
+        features_dict = asdict(features)
+        safety_score = model.predict(features_dict)
 
         return safety_score
     except Exception as e:

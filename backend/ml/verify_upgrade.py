@@ -13,21 +13,21 @@ def check_imports():
     print("Checking imports...")
 
     try:
-        from app.ml.safety_model import SafetyScoreModel, get_safety_model, predict_safety_score
+        from \1.\2 import SafetyScoreModel, get_safety_model, predict_safety_score
         print("✓ safety_model imports successful")
     except Exception as e:
         print(f"✗ safety_model import failed: {e}")
         return False
 
     try:
-        from app.ml.feature_engineering import engineer_features, calculate_report_features
+        from \1.\2 import engineer_features, calculate_report_features
         print("✓ feature_engineering imports successful")
     except Exception as e:
         print(f"✗ feature_engineering import failed: {e}")
         return False
 
     try:
-        from app.ml.train_model import train_model, generate_realistic_training_data
+        from \1.\2 import train_model, generate_realistic_training_data
         print("✓ train_model imports successful")
     except Exception as e:
         print(f"✗ train_model import failed: {e}")
@@ -40,7 +40,7 @@ def check_safety_model_class():
     print("\nChecking SafetyScoreModel class...")
 
     try:
-        from app.ml.safety_model import SafetyScoreModel
+        from \1.\2 import SafetyScoreModel
 
         # Check required methods exist
         required_methods = ['__init__', 'prepare_features', 'predict', 'train', 'save_model', 'load_model']
@@ -67,7 +67,7 @@ def check_feature_engineering():
     print("\nChecking feature engineering...")
 
     try:
-        from app.ml.feature_engineering import engineer_features, calculate_report_features
+        from \1.\2 import engineer_features, calculate_report_features
 
         # Check engineer_features exists
         if not callable(engineer_features):
@@ -105,7 +105,7 @@ def check_training_script():
     print("\nChecking training script...")
 
     try:
-        from app.ml.train_model import train_model, generate_realistic_training_data, train_and_evaluate_models
+        from \1.\2 import train_model, generate_realistic_training_data, train_and_evaluate_models
 
         # Check functions exist
         if not callable(train_model):
@@ -181,7 +181,7 @@ def main():
         print("   cd /d D:\\saferoute-ai\\backend\\ml")
         print("   python train_model.py --samples 10000")
         print("\n2. After training, verify the model works:")
-        print("   python -c \"from app.ml.safety_model import predict_safety_score; print(predict_safety_score(28.6315, 77.2167))\"")
+        print("   python -c \"from \1.\2 import predict_safety_score; print(predict_safety_score(28.6315, 77.2167))\"")
     else:
         print("✗ Some checks failed. Please fix the issues before proceeding.")
     print("=" * 50)

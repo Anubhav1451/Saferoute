@@ -1,6 +1,7 @@
 import sys
 import os
 import re
+import csv
 import json
 import time
 import hashlib
@@ -54,6 +55,9 @@ class BaseImporter:
         self.logger = EtlLogger(self.source_name)
         self._counters: Dict[str, int] = defaultdict(int)
         self._start_time: Optional[float] = None
+        self._record_buffer: List[Any] = []
+        self._quarantine_buffer: List[Any] = []
+        self._flush_interval: int = 200
 
     # ------------------------------------------------------------------
     # Session management
@@ -76,6 +80,7 @@ class BaseImporter:
             session.close()
 
     def close_all(self):
+        self._flush_buffers()
         if self._app_session:
             self._app_session.close()
             self._app_session = None
@@ -127,7 +132,8 @@ class BaseImporter:
         if source_file and os.path.exists(source_file):
             h = hashlib.sha256()
             with open(source_file, "rb") as f:
-                h.update(f.read())
+                for chunk in iter(lambda: f.read(65536), b""):
+                    h.update(chunk)
             source_hash = h.hexdigest()[:16]
 
         etl_session = self.get_etl_session()
@@ -197,8 +203,9 @@ class BaseImporter:
             confidence_score=confidence,
             error_message=error_message,
         )
-        etl_session.add(rec)
-        etl_session.commit()
+        self._record_buffer.append(rec)
+        if len(self._record_buffer) >= self._flush_interval:
+            self._flush_buffers()
 
     # ------------------------------------------------------------------
     # Quarantine
@@ -219,11 +226,24 @@ class BaseImporter:
             error_message=str(message)[:500],
             field_errors_json=json.dumps(field_errors) if field_errors else None,
         )
-        etl_session.add(err)
-        etl_session.commit()
+        self._quarantine_buffer.append(err)
         self._counters["quarantined"] += 1
         self.logger.warn(f"Quarantined row {row_index}: [{error_type}] {message}",
                          row=row_index, error=error_type)
+        if len(self._quarantine_buffer) >= self._flush_interval:
+            self._flush_buffers()
+
+    def _flush_buffers(self):
+        """Flush buffered ETL records and quarantine entries to the database."""
+        etl_session = self.get_etl_session()
+        if self._record_buffer:
+            etl_session.add_all(self._record_buffer)
+            etl_session.commit()
+            self._record_buffer.clear()
+        if self._quarantine_buffer:
+            etl_session.add_all(self._quarantine_buffer)
+            etl_session.commit()
+            self._quarantine_buffer.clear()
 
     # ------------------------------------------------------------------
     # Validation hook
@@ -418,9 +438,27 @@ class BaseImporter:
 
         return None
 
+    # ------------------------------------------------------------------
+    # Shared CSV/numeric utilities
+    # ------------------------------------------------------------------
+
     @staticmethod
-    def chainage_to_latlon(highway_number: str, chainage_km: float) -> Optional[Tuple[float, float]]:
-        return None
+    def _parse_float(val: Any) -> Optional[float]:
+        if val is None:
+            return None
+        try:
+            v = float(val)
+            if v != v:
+                return None
+            return v
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _read_csv(filepath: str) -> List[Dict[str, Any]]:
+        with open(filepath, mode="r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            return [dict(r) for r in reader]
 
 
 class BaseAccidentImporter(BaseImporter):

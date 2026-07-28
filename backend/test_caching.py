@@ -5,7 +5,7 @@ Test the caching of safety data and graph in the routing service.
 import sys
 import os
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
 
 # Add the backend directory to the path
@@ -90,13 +90,18 @@ def test_caching():
         create_mock_user_report(29.2, 77.4, days_ago=5)
     ]
 
+    # Create empty lists for the other types of data
+    mock_segment_risks = []
+    mock_black_spots = []
+    mock_accident_records = []
+
     # Now, we need to mock the database methods to return this data
     def mock_get_nearby_safety_data_bounding_box(min_lat, max_lat, min_lon, max_lon):
         # Filter the mock data to those within the bounding box
         nodes = [n for n in mock_safety_nodes if min_lat <= n.latitude <= max_lat and min_lon <= n.longitude <= max_lon]
         hotspots = [h for h in mock_crime_hotspots if min_lat <= h.latitude <= max_lat and min_lon <= h.longitude <= max_lon]
         reports = [r for r in mock_user_reports if min_lat <= r.latitude <= max_lat and min_lon <= r.longitude <= max_lon]
-        return (nodes, hotspots, reports)
+        return (nodes, hotspots, reports, mock_segment_risks)
 
     def mock_get_nearby_safety_data(lat, lon, radius_meters=None):
         # Use a default radius if not provided
@@ -111,20 +116,41 @@ def test_caching():
         nodes = [n for n in mock_safety_nodes if min_lat <= n.latitude <= max_lat and min_lon <= n.longitude <= max_lon]
         hotspots = [h for h in mock_crime_hotspots if min_lat <= h.latitude <= max_lat and min_lon <= h.longitude <= max_lon]
         reports = [r for r in mock_user_reports if min_lat <= r.latitude <= max_lat and min_lon <= r.longitude <= max_lon]
-        return (nodes, hotspots, reports)
+        return (nodes, hotspots, reports, mock_segment_risks)
 
     # Also mock the AI safety score to return a valid value
     def mock_calculate_ai_safety_score(latitude, longitude, timestamp=None):
         # Return a safety score based on latitude for variation
         return 0.5 + 0.5 * (latitude - 28) / (30 - 28)  # ranges from 0.5 to 1.0
 
+    # Mock the database queries for black spots and accident records
+    def mock_query(model):
+        query_mock = MagicMock()
+        if model.__name__ == 'HighwayBlackSpot':
+            query_mock.all.return_value = mock_black_spots
+        elif model.__name__ == 'AccidentRecord':
+            query_mock.all.return_value = mock_accident_records
+        else:
+            # For other models (SafetyNode, CrimeHotspot, UserReport, RoadSegmentRisk)
+            # we'll handle this in the specific method mocks above
+            query_mock.all.return_value = []
+        return query_mock
+
+    db.query.side_effect = mock_query
+
     # Patch the methods
     with patch('app.services.routing.SafetyRoutingService.get_nearby_safety_data_bounding_box') as mock_bounding_box, \
          patch('app.services.routing.SafetyRoutingService.get_nearby_safety_data') as mock_radius, \
-         patch('app.services.routing.SafetyRoutingService.calculate_ai_safety_score') as mock_ai:
+         patch('app.services.routing.SafetyRoutingService.calculate_ai_safety_score') as mock_ai, \
+         patch('app.services.graph_utils.GraphSpatialIndex') as mock_gsi:
         mock_bounding_box.side_effect = mock_get_nearby_safety_data_bounding_box
         mock_radius.side_effect = mock_get_nearby_safety_data
         mock_ai.side_effect = mock_calculate_ai_safety_score
+        # Mock the GraphSpatialIndex to avoid database queries
+        mock_gsi_instance = MagicMock()
+        mock_gsi_instance._node_grid = {}
+        mock_gsi_instance._edge_grid = {}
+        mock_gsi.return_value = mock_gsi_instance
 
         # First request
         print("=== First request ===")

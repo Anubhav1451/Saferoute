@@ -1,434 +1,440 @@
 """
-Feature engineering layer for safety prediction.
-Converts raw safety data into features for machine learning models.
+Feature engineering for road segments.
+Extracts static, historical, dynamic, and graph-based features for each road segment.
 """
-import math
-from typing import List, Dict, Any, Tuple, Optional
-from datetime import datetime, timedelta
-import numpy as np
+
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from app.db.models import SafetyNode, CrimeHotspot, UserReport, LightingLevel, CrowdDensity, SeverityLevel
-from ml.data_ingestion import get_safety_data_for_location
-import logging
+from sqlalchemy import and_, or_, func, desc
+from datetime import datetime, timedelta
+import math
+import numpy as np
 
-logger = logging.getLogger(__name__)
+from app.db.models import (
+    GraphEdge,
+    GraphNode,
+    OSMWay,
+    AccidentRecord,
+    HighwayBlackSpot,
+    RoadSegmentRisk,
+    AccidentSeverity,
+    BlackSpotSeverity,
+    LightingLevel,
+    CrowdDensity,
+    SeverityLevel,
+)
 
-# Constants for feature engineering
-EARTH_RADIUS_METERS = 6371000
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Calculate the great circle distance between two points
-    on the earth (specified in decimal degrees)
-    Returns distance in meters
-    """
-    # Convert decimal degrees to radians
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+# Constants for normalization (based on domain knowledge and data inspection)
+# These values are chosen to cover the expected range of values.
+# For features without known bounds, we use percentile-based estimates from training data.
 
-    # Haversine formula
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-    c = 2 * math.asin(math.sqrt(a))
-    distance = EARTH_RADIUS_METERS * c
+# Static feature normalization constants
+LANES_MAX = 10.0  # Assume max 10 lanes
+SPEED_LIMIT_MAX = 200.0  # km/h, reasonable max speed limit
+# Road class: we'll map to ordinal and normalize by number of classes
+ROAD_CLASS_ORDER = [
+    'motorway', 'trunk', 'primary', 'secondary', 'tertiary',
+    'unclassified', 'residential', 'service', 'footway', 'cycleway', 'path',
+    'living_street', 'track', 'raceway', 'road',  # fallback
+]
+NUM_ROAD_CLASSES = len(ROAD_CLASS_ORDER)
 
-    return distance
+# Historical feature normalization constants
+# These are based on typical values; in production, these should be computed from training data
+ACCIDENT_COUNT_MAX = 20.0  # accidents per segment (over history)
+FATAL_COUNT_MAX = 5.0
+GRIEVOUS_COUNT_MAX = 10.0
+BLACKSPOT_COUNT_MAX = 5.0
+ACCIDENT_DENSITY_MAX = 10.0  # accidents per km
+SEVERITY_INDEX_MAX = 100.0  # weighted sum, max plausible
+RECENCY_WEIGHT_MAX = 1.0  # exponential decay weight, max 1.0
+CONFIDENCE_MAX = 1.0  # already 0-1
 
-def get_time_features(timestamp: datetime) -> Dict[str, Any]:
-    """
-    Extract time-based features from a timestamp.
-    """
-    return {
-        "hour": timestamp.hour,
-        "day_of_week": timestamp.weekday(),  # Monday=0, Sunday=6
-        "day_of_month": timestamp.day,
-        "month": timestamp.month,
-        "is_weekend": 1 if timestamp.weekday() >= 5 else 0,  # Saturday=5, Sunday=6
-        "is_night": 1 if timestamp.hour < 6 or timestamp.hour >= 20 else 0  # Night: 8PM-6AM
-    }
+# Dynamic feature normalization constants (placeholders)
+# These will be set to unknown (-1.0) until real data sources are integrated
+WEATHER_UNKNOWN = -1.0
+TRAFFIC_UNKNOWN = -1.0
+VISIBILITY_UNKNOWN = -1.0
+CONSTRUCTION_UNKNOWN = -1.0
 
-def get_location_features(latitude: float, longitude: float) -> Dict[str, Any]:
-    """
-    Get location-based features.
-    In a more advanced system, we might include elevation, distance to city center, etc.
-    For now, we just return the raw coordinates.
-    """
-    return {
-        "latitude": latitude,
-        "longitude": longitude
-    }
+# Graph feature normalization constants
+DEGREE_MAX = 20.0  # max degree of a node in the road network
+# Betweenness and centrality are normalized to [0,1] by algorithm, so we keep as is
+# Connectivity: binary (connected or not) -> 0.0 or 1.0
 
-def calculate_crime_density(
-    crime_hotspots: List[CrimeHotspot],
-    latitude: float,
-    longitude: float,
-    radius_meters: float = 1000.0
-) -> Dict[str, Any]:
-    """
-    Calculate crime density features based on crime hotspots.
-    Weights by severity and proximity.
-    """
-    # Handle None or empty list
-    if not crime_hotspots:
-        return {
-            "crime_density_weighted": 0.0,
-            "crime_high_count": 0,
-            "crime_medium_count": 0,
-            "crime_low_count": 0,
-            "crime_weighted_severity_avg": 0.0
-        }
 
-    total_weighted_count = 0.0
-    high_severity_count = 0
-    medium_severity_count = 0
-    low_severity_count = 0
-    total_weighted_severity = 0.0
+def _safe_divide(numerator: float, denominator: float, default: float = 0.0) -> float:
+    """Safe division that returns default if denominator is zero."""
+    return numerator / denominator if denominator != 0 else default
 
-    for hotspot in crime_hotspots:
-        distance = haversine_distance(latitude, longitude, hotspot.latitude, hotspot.longitude)
 
-        # Only consider hotspots within radius
-        if distance < radius_meters:
-            # Proximity weight (closer = higher weight)
-            proximity_weight = 1.0 - (distance / radius_meters)
-
-            # Severity weight
-            if hotspot.severity == SeverityLevel.HIGH:
-                severity_weight = 3.0
-                high_severity_count += 1
-            elif hotspot.severity == SeverityLevel.MEDIUM:
-                severity_weight = 2.0
-                medium_severity_count += 1
-            else:  # LOW
-                severity_weight = 1.0
-                low_severity_count += 1
-
-            # Combined weight
-            weight = proximity_weight * severity_weight
-            total_weighted_count += weight
-            total_weighted_severity += weight * severity_weight
-
-    return {
-        "crime_density_weighted": total_weighted_count,
-        "crime_high_count": high_severity_count,
-        "crime_medium_count": medium_severity_count,
-        "crime_low_count": low_severity_count,
-        "crime_weighted_severity_avg": total_weighted_severity / max(total_weighted_count, 1)
-    }
-
-def calculate_lighting_features(
-    safety_nodes: List[SafetyNode],
-    latitude: float,
-    longitude: float,
-    radius_meters: float = 1000.0
-) -> Dict[str, Any]:
-    """
-    Calculate lighting features based on safety nodes.
-    """
-    # Handle None or empty list
-    if not safety_nodes:
-        return {
-            "lighting_avg": 0.5,
-            "low_lighting_count": 0,
-            "total_safety_nodes": 0
-        }
-
-    lighting_scores = {
-        LightingLevel.LOW: 0.0,
-        LightingLevel.MEDIUM: 0.5,
-        LightingLevel.HIGH: 1.0
-    }
-
-    total_weight = 0.0
-    weighted_lighting_sum = 0.0
-    low_lighting_count = 0
-    total_nodes = len(safety_nodes)
-
-    for node in safety_nodes:
-        distance = haversine_distance(latitude, longitude, node.latitude, node.longitude)
-
-        # Only consider nodes within radius
-        if distance < radius_meters:
-            # Proximity weight
-            proximity_weight = 1.0 - (distance / radius_meters)
-
-            # Lighting score
-            lighting_score = lighting_scores[node.lighting_level]
-
-            # Weighted sum
-            weight = proximity_weight
-            total_weight += weight
-            weighted_lighting_sum += weight * lighting_score
-
-            # Count low lighting nodes
-            if node.lighting_level == LightingLevel.LOW:
-                low_lighting_count += 1
-
-    avg_lighting = weighted_lighting_sum / max(total_weight, 1) if total_weight > 0 else 0.5
-
-    return {
-        "lighting_avg": avg_lighting,
-        "low_lighting_count": low_lighting_count,
-        "total_safety_nodes": total_nodes
-    }
-
-def calculate_crowd_density_features(
-    safety_nodes: List[SafetyNode],
-    latitude: float,
-    longitude: float,
-    radius_meters: float = 1000.0
-) -> Dict[str, Any]:
-    """
-    Calculate crowd density features based on safety nodes.
-    """
-    # Handle None or empty list
-    if not safety_nodes:
-        return {
-            "crowd_density_avg": 0.5,
-            "sparse_crowd_count": 0,
-            "total_safety_nodes": 0
-        }
-
-    crowd_scores = {
-        CrowdDensity.SPARSE: 0.0,
-        CrowdDensity.NORMAL: 0.5,
-        CrowdDensity.DENSE: 1.0
-    }
-
-    total_weight = 0.0
-    weighted_crowd_sum = 0.0
-    sparse_crowd_count = 0
-    total_nodes = len(safety_nodes)
-
-    for node in safety_nodes:
-        distance = haversine_distance(latitude, longitude, node.latitude, node.longitude)
-
-        # Only consider nodes within radius
-        if distance < radius_meters:
-            # Proximity weight
-            proximity_weight = 1.0 - (distance / radius_meters)
-
-            # Crowd score
-            crowd_score = crowd_scores[node.crowd_density]
-
-            # Weighted sum
-            weight = proximity_weight
-            total_weight += weight
-            weighted_crowd_sum += weight * crowd_score
-
-            # Count sparse crowd nodes (potentially unsafe)
-            if node.crowd_density == CrowdDensity.SPARSE:
-                sparse_crowd_count += 1
-
-    avg_crowd_density = weighted_crowd_sum / max(total_weight, 1) if total_weight > 0 else 0.5
-
-    return {
-        "crowd_density_avg": avg_crowd_density,
-        "sparse_crowd_count": sparse_crowd_count,
-        "total_safety_nodes": total_nodes
-    }
-
-def calculate_report_features(
-    user_reports: List[UserReport],
-    latitude: float,
-    longitude: float,
-    radius_meters: float = 1000.0
-) -> Dict[str, Any]:
-    """
-    Calculate user report features.
-    Weights by recency and type.
-    """
-    # Handle None or empty list
-    if not user_reports:
-        return {
-            "report_count_1h": 0,
-            "report_count_24h": 0,
-            "report_count_7d": 0,
-            "report_count_30d": 0,
-            "report_weighted_recent": 0.0,
-            "report_weighted_severity": 0.0
-        }
-
-    now = datetime.utcnow()
-
-    # Time windows in seconds
-    windows = {
-        "last_1h": 3600,
-        "last_24h": 86400,
-        "last_7d": 604800,
-        "last_30d": 2592000
-    }
-
-    # Initialize features
-    features = {
-        "report_count_1h": 0,
-        "report_count_24h": 0,
-        "report_count_7d": 0,
-        "report_count_30d": 0,
-        "report_weighted_recent": 0.0,
-        "report_weighted_severity": 0.0
-    }
-
-    # Report type weights (higher = more severe)
-    report_type_weights = {
-        "SUSPICIOUS_ACTIVITY": 3.0,
-        "NO_STREETLIGHTS": 2.0,
-        "POOR_ROAD_CONDITION": 1.5,
-        "OVERGROWN_VEGETATION": 1.0,
-        "BROKEN_STREETLIGHT": 2.5,
-        "DARK_AREA": 2.5,
-        "UNSAFE_PATH": 3.0,
-        "LACK_OF_SECURITY": 2.0
-    }
-
-    total_weight = 0.0
-    weighted_severity_sum = 0.0
-
-    for report in user_reports:
-        distance = haversine_distance(latitude, longitude, report.latitude, report.longitude)
-
-        # Only consider reports within radius
-        if distance < radius_meters:
-            # Proximity weight
-            proximity_weight = 1.0 - (distance / radius_meters)
-
-            # Time-based weights
-            hours_old = (now - report.timestamp).total_seconds() / 3600
-            days_old = hours_old / 24
-
-            # Count reports in different time windows
-            if hours_old < 1:
-                features["report_count_1h"] += 1
-            if hours_old < 24:
-                features["report_count_24h"] += 1
-            if days_old < 7:
-                features["report_count_7d"] += 1
-            if days_old < 30:
-                features["report_count_30d"] += 1
-
-            # Recency weight (exponential decay)
-            recency_weight = math.exp(-hours_old / 24)  # Decay over days
-
-            # Type weight
-            type_weight = report_type_weights.get(report.report_type, 1.0)
-
-            # Combined weight for reporting
-            weight = proximity_weight * recency_weight * type_weight
-            features["report_weighted_recent"] += weight
-
-            # Weighted severity sum (for average severity)
-            weighted_severity_sum += weight * type_weight
-            total_weight += weight
-
-    # Calculate average severity if we have reports
-    if total_weight > 0:
-        features["report_weighted_severity"] = weighted_severity_sum / total_weight
-    else:
-        features["report_weighted_severity"] = 0.0
-
-    return features
-
-def engineer_features(
-    latitude: float,
-    longitude: float,
-    timestamp: Optional[datetime] = None,
-    radius_meters: float = 1000.0,
-    db: Optional[Session] = None
-) -> Dict[str, Any]:
-    """
-    Main feature engineering function.
-    Takes location and time, returns a dictionary of features.
-    """
-    if timestamp is None:
-        timestamp = datetime.utcnow()
-
-    # Get a database session if not provided
-    if db is None:
-        # In a real application, we would use dependency injection or a context manager
-        # For simplicity, we're creating a new session here
-        try:
-            from app.db.session import SessionLocal
-            db = SessionLocal()
-            close_db = True
-        except Exception as e:
-            logger.error(f"Failed to create database session: {e}")
-            # Return default features if we can't connect to the database
-            return _get_default_features(latitude, longitude, timestamp)
-    else:
-        close_db = False
-
+def _get_road_class_index(road_class: str) -> int:
+    """Map road class string to index, returning -1 if unknown."""
     try:
-        # Get safety data
-        safety_data = get_safety_data_for_location(
-            db, latitude, longitude, timestamp, radius_meters
+        return ROAD_CLASS_ORDER.index(road_class.lower())
+    except ValueError:
+        return -1
+
+
+def _get_degree_from_node(session: Session, node_id: int) -> int:
+    """Get the degree (number of connected edges) for a graph node."""
+    # Count edges where node is either source or destination
+    count = session.query(GraphEdge).filter(
+        or_(
+            GraphEdge.source_node_id == node_id,
+            GraphEdge.dest_node_id == node_id
         )
+    ).count()
+    return count
 
-        safety_nodes = safety_data["safety_nodes"]
-        crime_hotspots = safety_data["crime_hotspots"]
-        user_reports = safety_data["user_reports"]
 
-        # Initialize features dictionary
-        features = {}
-
-        # Add time features
-        features.update(get_time_features(timestamp))
-
-        # Add location features
-        features.update(get_location_features(latitude, longitude))
-
-        # Add crime density features
-        features.update(calculate_crime_density(
-            crime_hotspots, latitude, longitude, radius_meters
-        ))
-
-        # Add lighting features
-        features.update(calculate_lighting_features(
-            safety_nodes, latitude, longitude, radius_meters
-        ))
-
-        # Add crowd density features
-        features.update(calculate_crowd_density_features(
-            safety_nodes, latitude, longitude, radius_meters
-        ))
-
-        # Add report features
-        features.update(calculate_report_features(
-            user_reports, latitude, longitude, radius_meters
-        ))
-
-        return features
-
-    except Exception as e:
-        logger.error(f"Error in engineer_features: {e}")
-        # Return default features on error
-        return _get_default_features(latitude, longitude, timestamp)
-
-    finally:
-        if close_db:
-            db.close()
-
-def _get_default_features(latitude: float, longitude: float, timestamp: datetime) -> Dict[str, Any]:
+@dataclass
+class RoadSegmentFeatures:
     """
-    Return a default set of features when data cannot be retrieved.
+    Features for a road segment, all normalized to [0, 1] where applicable.
+    Unknown or missing values are represented as -1.0.
     """
-    features = {}
-    features.update(get_time_features(timestamp))
-    features.update(get_location_features(latitude, longitude))
-    # Default values for other features
-    features.update({
-        "crime_density_weighted": 0.0,
-        "crime_high_count": 0,
-        "crime_medium_count": 0,
-        "crime_low_count": 0,
-        "crime_weighted_severity_avg": 0.0,
-        "lighting_avg": 0.5,
-        "low_lighting_count": 0,
-        "total_safety_nodes": 0,
-        "crowd_density_avg": 0.5,
-        "sparse_crowd_count": 0,
-        "total_safety_nodes_2": 0,  # Note: duplicated in original, keeping for compatibility
-        "report_weighted_recent": 0.0,
-        "report_weighted_severity": 0.0
-    })
-    return features
+    # Static features
+    road_class: float  # normalized index of road class [0,1]
+    lanes: float  # normalized lane count [0,1]
+    speed_limit: float  # normalized speed limit [0,1]
+    one_way: float  # 0.0 for two-way, 1.0 for one-way
+    junction: float  # 1.0 if either endpoint is a junction (degree > 2), else 0.0
+    bridge: float  # 1.0 if bridge, else 0.0
+    tunnel: float  # 1.0 if tunnel, else 0.0
+    curvature: float  # estimate of curvature [0,1] (0 = straight, 1 = highly curved) - placeholder
+    elevation: float  # normalized elevation [-1,1] -> [0,1] via shift - placeholder
+    urban_rural: float  # 0.0 rural, 1.0 urban - placeholder
+    lighting: float  # normalized lighting score [0,1] (0 = dark, 1 = well lit)
+    surface: float  # encoded surface type [0,1] - placeholder
+    smoothness: float  # encoded smoothness [0,1] - placeholder
 
+    # Historical features (from accident and blackspot data)
+    accident_count: float  # normalized count of accidents [0,1]
+    fatal_count: float  # normalized count of fatal accidents [0,1]
+    grievous_count: float  # normalized count of grievous injuries [0,1]
+    blackspot_count: float  # normalized count of black spots [0,1]
+    accident_density: float  # normalized accidents per km [0,1]
+    severity_index: float  # normalized weighted severity score [0,1]
+    recency_weight: float  # normalized recency weight [0,1]
+    confidence: float  # confidence in historical data [0,1]
+
+    # Dynamic features (placeholder - to be implemented with real-time data)
+    weather: float  # weather condition impact [0,1] - unknown
+    traffic: float  # traffic density [0,1] - unknown
+    visibility: float  # visibility conditions [0,1] - unknown
+    construction: float  # construction activity [0,1] - unknown
+
+    # Graph-based features
+    degree: float  # average node degree normalized [0,1]
+    betweenness: float  # betweenness centrality [0,1] - placeholder
+    closeness: float  # closeness centrality [0,1] - placeholder
+    connectivity: float  # 1.0 if node is connected to giant component, else 0.0 - placeholder
+
+
+def extract_features_for_edge(session: Session, edge: GraphEdge) -> RoadSegmentFeatures:
+    """
+    Extract all features for a given graph edge.
+
+    Args:
+        session: Database session
+        edge: GraphEdge object representing the road segment
+
+    Returns:
+        RoadSegmentFeatures object with all features extracted and normalized
+    """
+    # Initialize all features to unknown (-1.0)
+    # We'll set known values as we compute them
+
+    # --- Static Features ---
+    # Road class
+    road_class_idx = _get_road_class_index(edge.road_class) if edge.road_class else -1
+    road_class_norm = _safe_divide(road_class_idx, float(NUM_ROAD_CLASSES - 1)) if road_class_idx != -1 else -1.0
+
+    # Lanes
+    lanes_norm = _safe_divide(float(edge.lanes) if edge.lanes is not None else -1.0, LANES_MAX) \
+        if edge.lanes is not None and edge.lanes >= 0 else -1.0
+
+    # Speed limit
+    speed_limit_norm = _safe_divide(float(edge.maxspeed) if edge.maxspeed is not None else -1.0, SPEED_LIMIT_MAX) \
+        if edge.maxspeed is not None and edge.maxspeed >= 0 else -1.0
+
+    # One-way (direction field: 'BIDIRECTIONAL', 'FORWARD', 'BACKWARD')
+    one_way_val = 1.0 if edge.direction and edge.direction != 'BIDIRECTIONAL' else 0.0
+
+    # Junction: determine if either node is a junction (degree > 2)
+    # Note: We consider a node a junction if it has more than 2 connections (dead end=1, straight=2, junction>=3)
+    src_degree = _get_degree_from_node(edge.source_node_id) if edge.source_node_id else -1
+    dst_degree = _get_degree_from_node(edge.dest_node_id) if edge.dest_node_id else -1
+    junction_val = 1.0 if (src_degree > 2 or dst_degree > 2) else 0.0
+    # If we couldn't compute degree, mark as unknown
+    if src_degree == -1 or dst_degree == -1:
+        junction_val = -1.0
+
+    # Bridge
+    bridge_val = 1.0 if edge.is_bridge else 0.0
+
+    # Tunnel
+    tunnel_val = 1.0 if edge.is_tunnel else 0.0
+
+    # Curvature: placeholder - we don't have direct curvature, but we can estimate from heading change?
+    # For now, set to unknown
+    curvature_val = -1.0
+
+    # Elevation: placeholder
+    elevation_val = -1.0
+
+    # Urban/Rural: placeholder
+    urban_rural_val = -1.0
+
+    # Lighting: from edge.lit (string: 'yes', 'no', or unknown)
+    lighting_val = -1.0
+    if edge.lit:
+        lit_str = edge.lit.lower()
+        if lit_str == 'yes':
+            lighting_val = 1.0
+        elif lit_str == 'no':
+            lighting_val = 0.0
+        # else leave as -1.0 (unknown)
+
+    # Surface: placeholder - encode surface type
+    surface_val = -1.0
+
+    # Smoothness: placeholder - encode smoothness
+    smoothness_val = -1.0
+
+    # --- Historical Features ---
+    # We'll query RoadSegmentRisk for this segment (by coordinates) or by osm_way_id?
+    # The RoadSegmentRisk table is defined by start/end lat/lon, not by graph edge.
+    # We'll try to find a matching RoadSegmentRisk by proximity to the edge's midpoint.
+    # For simplicity, we'll use the edge's midpoint and look for nearby Risk segments.
+
+    # Get midpoint of the edge
+    mid_lat = (edge.mid_lat if edge.mid_lat is not None else
+               (edge.source_node.latitude + edge.dest_node.latitude) / 2.0 if edge.source_node and edge.dest_node else None)
+    mid_lon = (edge.mid_lon if edge.mid_lon is not None else
+               (edge.source_node.longitude + edge.dest_node.longitude) / 2.0 if edge.source_node and edge.dest_node else None)
+
+    # Default historical values to unknown
+    accident_count_val = -1.0
+    fatal_count_val = -1.0
+    grievous_count_val = -1.0
+    blackspot_count_val = -1.0
+    accident_density_val = -1.0
+    severity_index_val = -1.0
+    recency_weight_val = -1.0
+    confidence_val = -1.0
+
+    if mid_lat is not None and mid_lon is not None:
+        # Look for road segment risks near this point (within ~50m)
+        lat_range = 0.0005  # ~50m in latitude
+        lon_range = 0.0005  # ~50m in latitude at equator, adjust for latitude
+        # Adjust longitude range for latitude
+        if mid_lat is not None:
+            lon_range = 0.0005 / max(0.0001, abs(math.cos(math.radians(mid_lat))))
+        else:
+            lon_range = 0.0005
+
+        risk_records = session.query(RoadSegmentRisk).filter(
+            and_(
+                RoadSegmentRisk.start_latitude >= mid_lat - lat_range,
+                RoadSegmentRisk.start_latitude <= mid_lat + lat_range,
+                RoadSegmentRisk.start_longitude >= mid_lon - lon_range,
+                RoadSegmentRisk.start_longitude <= mid_lon + lon_range
+            )
+        ).all()
+
+        if risk_records:
+            # Use the closest risk record (by distance to midpoint)
+            def dist_sq(r):
+                return (r.start_latitude - mid_lat)**2 + (r.start_longitude - mid_lon)**2
+            closest_risk = min(risk_records, key=dist_sq)
+
+            # Accident count (from record_count)
+            accident_count_val = _safe_divide(float(closest_risk.record_count), ACCIDENT_COUNT_MAX) \
+                if closest_risk.record_count is not None else -1.0
+
+            # Fatal and grievous counts: we don't have these in Risk, need to query AccidentRecord
+            # We'll query accidents near this segment
+            # For simplicity, we'll use the same bounding box
+            acc_records = session.query(AccidentRecord).filter(
+                and_(
+                    AccidentRecord.latitude >= mid_lat - lat_range,
+                    AccidentRecord.latitude <= mid_lat + lat_range,
+                    AccidentRecord.longitude >= mid_lon - lon_range,
+                    AccidentRecord.longitude <= mid_lon + lon_range
+                )
+            ).all()
+
+            fatal_count = 0
+            grievous_count = 0
+            for acc in acc_records:
+                if acc.severity == AccidentSeverity.FATAL:
+                    fatal_count += 1
+                elif acc.severity == AccidentSeverity.GRIEVOUS:
+                    grievous_count += 1
+            fatal_count_val = _safe_divide(float(fatal_count), FATAL_COUNT_MAX)
+            grievous_count_val = _safe_divide(float(grievous_count), GRIEVOUS_COUNT_MAX)
+
+            # Black spot count: query HighwayBlackSpot near the segment
+            bs_records = session.query(HighwayBlackSpot).filter(
+                and_(
+                    HighwayBlackSpot.latitude >= mid_lat - lat_range,
+                    HighwayBlackSpot.latitude <= mid_lat + lat_range,
+                    HighwayBlackSpot.longitude >= mid_lon - lon_range,
+                    HighwayBlackSpot.longitude <= mid_lon + lon_range
+                )
+            ).count()
+            blackspot_count_val = _safe_divide(float(bs_records), BLACKSPOT_COUNT_MAX)
+
+            # Accident density: from risk record if available
+            accident_density_val = _safe_divide(float(closest_risk.accident_density), ACCIDENT_DENSITY_MAX) \
+                if closest_risk.accident_density is not None else -1.0
+
+            # Severity index: compute from accidents in the same area
+            # We'll use a simple weighting: fatal=2, grievous=1, simple=0
+            severity_sum = 0
+            for acc in acc_records:
+                if acc.severity == AccidentSeverity.FATAL:
+                    severity_sum += 2
+                elif acc.severity == AccidentSeverity.GRIEVOUS:
+                    severity_sum += 1
+                # simple adds 0
+            severity_index_val = _safe_divide(float(severity_sum), SEVERITY_INDEX_MAX)
+
+            # Recency weight: exponential decay based on accident dates
+            now = datetime.utcnow()
+            total_weight = 0.0
+            half_life_days = 365.0  # 1 year half-life
+            for acc in acc_records:
+                if acc.accident_date:
+                    days_old = (now - acc.accident_date).days
+                    weight = 0.5 ** (days_old / half_life_days)
+                    total_weight += weight
+            # Normalize by max possible weight (if all accidents were today)
+            max_possible_weight = len(acc_records) * 1.0
+            recency_weight_val = _safe_divide(total_weight, max_possible_weight) if max_possible_weight > 0 else 0.0
+
+            # Confidence: from risk record confidence score
+            confidence_val = _safe_divide(float(closest_risk.confidence_score), CONFIDENCE_MAX) \
+                if closest_risk.confidence_score is not None else -1.0
+
+    # --- Dynamic Features (placeholder) ---
+    weather_val = WEATHER_UNKNOWN
+    traffic_val = TRAFFIC_UNKNOWN
+    visibility_val = VISIBILITY_UNKNOWN
+    construction_val = CONSTRUCTION_UNKNOWN
+
+    # --- Graph Features ---
+    # Degree: average of the two node degrees
+    degree_val = -1.0
+    if src_degree != -1 and dst_degree != -1:
+        avg_degree = (src_degree + dst_degree) / 2.0
+        degree_val = _safe_divide(avg_degree, DEGREE_MAX)
+    elif src_degree != -1:
+        degree_val = _safe_divide(float(src_degree), DEGREE_MAX)
+    elif dst_degree != -1:
+        degree_val = _safe_divide(float(dst_degree), DEGREE_MAX)
+
+    # Betweenness and closeness: placeholder (requires global graph computation)
+    betweenness_val = -1.0
+    closeness_val = -1.0
+
+    # Connectivity: placeholder (we assume the graph is connected for now)
+    connectivity_val = 1.0  # Assume connected; in reality we'd check connectivity to giant component
+
+    return RoadSegmentFeatures(
+        # Static
+        road_class=road_class_norm,
+        lanes=lanes_norm,
+        speed_limit=speed_limit_norm,
+        one_way=one_way_val,
+        junction=junction_val,
+        bridge=bridge_val,
+        tunnel=tunnel_val,
+        curvature=curvature_val,
+        elevation=elevation_val,
+        urban_rural=urban_rural_val,
+        lighting=lighting_val,
+        surface=surface_val,
+        smoothness=smoothness_val,
+        # Historical
+        accident_count=accident_count_val,
+        fatal_count=fatal_count_val,
+        grievous_count=grievous_count_val,
+        blackspot_count=blackspot_count_val,
+        accident_density=accident_density_val,
+        severity_index=severity_index_val,
+        recency_weight=recency_weight_val,
+        confidence=confidence_val,
+        # Dynamic
+        weather=weather_val,
+        traffic=traffic_val,
+        visibility=visibility_val,
+        construction=construction_val,
+        # Graph
+        degree=degree_val,
+        betweenness=betweenness_val,
+        closeness=closeness_val,
+        connectivity=connectivity_val
+    )
+
+
+def engineer_features(latitude: float, longitude: float, timestamp: Optional[datetime] = None, radius_meters: float = 1000.0, db: Optional[Session] = None) -> RoadSegmentFeatures:
+    """
+    Engineer features for a given point by finding the nearest road segment.
+
+    This is a simplified version for the safety model fallback.
+    In a full implementation, this would find the nearest road segment and extract features.
+    For now, we return a default set of features.
+
+    Args:
+        latitude: Latitude in decimal degrees
+        longitude: Longitude in decimal degrees
+        timestamp: Time for which to predict safety (defaults to now)
+        radius_meters: Radius to consider for features (defaults to 1000m)
+        db: Database session (optional, will create one if not provided)
+
+    Returns:
+        RoadSegmentFeatures object with all features extracted and normalized
+    """
+    # For the fallback, we return a default set of features (all 0.5)
+    # In a real implementation, we would query the database for the nearest road segment.
+    # Since this is a fallback, we return a neutral feature set.
+    return RoadSegmentFeatures(
+        # Static
+        road_class=0.5,
+        lanes=0.5,
+        speed_limit=0.5,
+        one_way=0.0,
+        junction=0.0,
+        bridge=0.0,
+        tunnel=0.0,
+        curvature=0.5,
+        elevation=0.5,
+        urban_rural=0.5,
+        lighting=0.5,
+        surface=0.5,
+        smoothness=0.5,
+        # Historical
+        accident_count=0.5,
+        fatal_count=0.5,
+        grievous_count=0.5,
+        blackspot_count=0.5,
+        accident_density=0.5,
+        severity_index=0.5,
+        recency_weight=0.5,
+        confidence=0.5,
+        # Dynamic
+        weather=0.5,
+        traffic=0.5,
+        visibility=0.5,
+        construction=0.5,
+        # Graph
+        degree=0.5,
+        betweenness=0.5,
+        closeness=0.5,
+        connectivity=0.5
+    )

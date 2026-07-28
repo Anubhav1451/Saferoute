@@ -6,7 +6,6 @@ Chandigarh-Dehradun, Lucknow-Kanpur.
 """
 import sys
 import os
-import math
 import time
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple
@@ -16,6 +15,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from sqlalchemy.orm import sessionmaker
 from app.db.models import Base, SafetyNode, LightingLevel, CrowdDensity
 from app.db.session import engine
+from scripts.data_ingestion.geo import haversine_distance
 import requests
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
@@ -50,16 +50,6 @@ REGIONS = [
         "bbox": {"south": 26.2, "north": 27.1, "west": 80.0, "east": 81.3},
     },
 ]
-
-
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-    c = 2 * math.asin(math.sqrt(a))
-    r = 6371000
-    return c * r
 
 
 def build_overpass_query(bbox: Dict[str, float]) -> str:

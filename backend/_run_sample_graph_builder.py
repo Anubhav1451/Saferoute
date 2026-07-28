@@ -12,10 +12,9 @@ from datetime import datetime
 # Get raw session, run GraphBuilder logic on a sample
 session = Session(bind=engine)
 
-# Get a small sample of unprocessed ways
-sample_size = 100
-ways = session.query(OSMWay).filter(OSMWay.processed_at == None).limit(sample_size).all()
-print(f"Processing {len(ways)} ways as sample\n")
+# Get a sample of unprocessed ways (limit to 1000 for speed)
+ways = session.query(OSMWay).filter(OSMWay.processed_at == None).limit(1000).all()
+print(f"Processing sample of unprocessed ways ({len(ways)})...")
 
 start = time.time()
 
@@ -25,9 +24,11 @@ builder.start_batch(total_records=len(ways), metadata={"mode": "sample"})
 
 for i, way in enumerate(ways):
     try:
+        # Load the way nodes for this way into the builder's cache
+        builder._load_way_nodes_for_batch(session, [way.id])
         builder.process_way(session, way)
         way.processed_at = datetime.utcnow()
-        
+
         if (i + 1) % 25 == 0:
             session.commit()
             print(f"  Processed {i+1}/{len(ways)} ways...")

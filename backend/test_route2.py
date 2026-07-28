@@ -4,7 +4,7 @@ Test the routing service with given coordinates.
 """
 import sys
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
 # Add the backend directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__)))
@@ -22,15 +22,32 @@ def test_routing_with_mock_data():
     # Create the routing service
     routing_service = SafetyRoutingService(db)
 
+    # Mock the database queries for black_spots and accident_records
+    def mock_query(model):
+        query_mock = MagicMock()
+        if model.__name__ == 'HighwayBlackSpot':
+            query_mock.all.return_value = []
+        elif model.__name__ == 'AccidentRecord':
+            query_mock.all.return_value = []
+        else:
+            # For other models (SafetyNode, CrimeHotspot, UserReport, RoadSegmentRisk, etc.)
+            # we'll handle this in the specific method mocks below
+            query_mock.all.return_value = []
+        return query_mock
+
+    db.query.side_effect = mock_query
+
     # Mock the safety data to return some dummy data
     # We'll create a few safety nodes along a path from Delhi to the destination
     # For simplicity, we'll make the safety data return empty so that penalties are zero
     # and the safest and fastest routes should be the same (straight line)
     # But we want to see the coordinates.
 
-    # We'll mock get_nearby_safety_data to return empty lists
-    with patch('app.services.routing.SafetyRoutingService.get_nearby_safety_data') as mock_get_data:
-        mock_get_data.return_value = ([], [], [])
+    # We'll mock both get_nearby_safety_data and get_nearby_safety_data_bounding_box to return empty lists
+    with patch('app.services.routing.SafetyRoutingService.get_nearby_safety_data') as mock_get_data, \
+         patch('app.services.routing.SafetyRoutingService.get_nearby_safety_data_bounding_box') as mock_get_data_bbox:
+        mock_get_data.return_value = ([], [], [], [])
+        mock_get_data_bbox.return_value = ([], [], [], [])
 
         # Also mock the AI safety score to return -1 (so it falls back to rule-based)
         with patch('app.services.routing.SafetyRoutingService.calculate_ai_safety_score') as mock_ai:

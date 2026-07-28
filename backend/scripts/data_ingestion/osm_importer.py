@@ -12,19 +12,14 @@ import osmium
 
 from app.db.session import engine as app_engine
 from app.db.models import Base, OSMWay, OSMWayNode
+from app.core.config import settings
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PACKAGE_DIR)
 from base_importer import BaseImporter
 from etl_logger import EtlLogger
 
-DRIVABLE_HIGHWAYS = {
-    'motorway', 'motorway_link', 
-    'trunk', 'trunk_link', 
-    'primary', 'primary_link', 
-    'secondary', 'secondary_link', 
-    'tertiary', 'tertiary_link', 
-    'unclassified', 'residential'
-}
+# Use configurable values from settings
+DRIVABLE_HIGHWAYS = settings.OSM_DRIVABLE_HIGHWAYS
 
 
 class OSMHandler(osmium.SimpleHandler):
@@ -87,7 +82,7 @@ class OSMHandler(osmium.SimpleHandler):
 
 class OSMImporter(BaseImporter):
     source_name = "osm_roads"
-    batch_size = 1000
+    batch_size = 10
 
     def __init__(self, source_name: Optional[str] = None):
         super().__init__(source_name)

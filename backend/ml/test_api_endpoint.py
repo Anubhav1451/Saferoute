@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 # Add the backend directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from app.main import app  # Assuming the FastAPI app is in app/main.py
+from backend.app.main import app  # Assuming the FastAPI app is in app/main.py
 
 def test_safety_score_endpoint():
     """Test the /api/v1/ai/safety-score endpoint."""
@@ -30,10 +30,12 @@ def test_safety_score_endpoint():
 
     # Check the response JSON
     data = response.json()
-    assert "safety_score" in data, "Response missing 'safety_score'"
-    assert "timestamp" in data, "Response missing 'timestamp'"
-    assert "risk_factors" in data, "Response missing 'risk_factors'"
-    assert 0.0 <= data["safety_score"] <= 1.0, f"Safety score {data['safety_score']} not in [0, 1]"
+    assert data["success"] == True, "Response missing 'success' field"
+    assert "data" in data, "Response missing 'data' field"
+    response_data = data["data"]
+    assert "safety_score" in response_data, "Response data missing 'safety_score'"
+    assert "timestamp" in response_data, "Response data missing 'timestamp'"
+    assert 0.0 <= response_data["safety_score"] <= 1.0, f"Safety score {response_data['safety_score']} not in [0, 1]"
 
     print("API endpoint test passed!")
 

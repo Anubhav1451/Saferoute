@@ -1,4 +1,12 @@
 # app/api/v1/ai.py
+import sys
+import os
+
+# Ensure backend/ is on sys.path so ml.safety_model resolves regardless of CWD
+_backend_path = os.path.join(os.path.dirname(__file__), '..', '..')
+if _backend_path not in sys.path:
+    sys.path.insert(0, os.path.abspath(_backend_path))
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime

@@ -1,4 +1,6 @@
 # app/api/v1/routing.py
+import asyncio
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -8,6 +10,7 @@ from app.schemas.routing import RouteRequest, RouteResponse
 from app.api.responses import success_response, error_response
 
 router = APIRouter()
+logger = logging.getLogger("saferoute.api.routing")
 
 
 @router.post("/calculate")
@@ -27,16 +30,30 @@ async def calculate_route(
     Returns both the safest route (weighted for safety) and fastest route (shortest distance).
     """
     try:
+        # RT-2: Guard same source/destination
+        if (abs(request.source.latitude - request.destination.latitude) < 1e-6 and
+                abs(request.source.longitude - request.destination.longitude) < 1e-6):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=error_response(
+                    error="Source and destination are identical",
+                    error_code="IDENTICAL_POINTS",
+                    message="Source and destination must be different locations"
+                )
+            )
+
         routing_service = SafetyRoutingService(db)
 
-        result = routing_service.find_safest_route(
+        # ARC-1: Run blocking routing computation in a thread to avoid blocking the event loop
+        result = await asyncio.to_thread(
+            routing_service.find_safest_route,
             source=request.source,
             destination=request.destination,
-            safety_weight=request.safety_weight
+            safety_weight=request.safety_weight,
         )
-        print(f"Routing service result keys: {result.keys()}")
-        print(f"Safest route: {result.get('safest_route')}")
-        print(f"Fastest route: {result.get('fastest_route')}")
+        logger.info("Route calculated: %d safest pts, %d fastest pts",
+                     len(result.get('safest_route', [])),
+                     len(result.get('fastest_route', [])))
 
         response = success_response(
             data={
@@ -50,11 +67,10 @@ async def calculate_route(
             },
             message="Route calculation completed successfully"
         )
-        print(f"[BACKEND] Final response: {response}")
         return response
 
     except ValueError as e:
-        print(f"[BACKEND] Validation error: {e}")
+        logger.warning("Route validation error: %s", e)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content=error_response(
@@ -64,9 +80,7 @@ async def calculate_route(
             )
         )
     except Exception as e:
-        print(f"[BACKEND] Route calculation error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Route calculation failed")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=error_response(

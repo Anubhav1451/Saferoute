@@ -12,14 +12,21 @@ Severity inference:
   - Otherwise: SIMPLE.
 """
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 import csv
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
+from scripts.data_ingestion.base_importer import BaseImporter
+from scripts.data_ingestion.validators import RangeValidator
+from scripts.data_ingestion.dedup import BaseDedupStrategy, DedupResult, FreshnessResolver
+
 from app.db.models import AccidentRecord, AccidentSeverity
-from .base_importer import BaseImporter
-from .validators import RangeValidator
-from .dedup import BaseDedupStrategy, DedupResult, FreshnessResolver
+
+print("MORTH accidents importer script started")  # DEBUG
 
 SEVERITY_MAP = {
     "fatal": AccidentSeverity.FATAL,
@@ -108,16 +115,6 @@ class AccidentRecordImporter(BaseImporter):
         return super().run(filepath=filepath, dry_run=dry_run, rows=parsed, metadata=batch_meta)
 
     # ------------------------------------------------------------------
-    # CSV reading
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _read_csv(filepath: str) -> List[Dict[str, Any]]:
-        with open(filepath, mode="r", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            return [dict(r) for r in reader]
-
-    # ------------------------------------------------------------------
     # Normalization
     # ------------------------------------------------------------------
 
@@ -178,16 +175,6 @@ class AccidentRecordImporter(BaseImporter):
     # ------------------------------------------------------------------
     # Normalization helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _parse_float(val) -> Optional[float]:
-        if val is None:
-            return None
-        try:
-            v = float(val)
-            return v if v == v else None
-        except (ValueError, TypeError):
-            return None
 
     @staticmethod
     def _parse_int(val) -> Optional[int]:
@@ -277,3 +264,11 @@ class AccidentRecordImporter(BaseImporter):
 
     def model_to_instance(self, normalized):
         return self.target_model(**{k: v for k, v in normalized.items() if k != "accident_id"})
+
+
+if __name__ == "__main__":
+    import sys
+    importer = AccidentRecordImporter()
+    filepath = sys.argv[1] if len(sys.argv) > 1 else None
+    result = importer.run(filepath=filepath)
+    print(f"Import result: {result}")

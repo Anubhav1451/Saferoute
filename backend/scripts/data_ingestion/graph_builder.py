@@ -1,6 +1,5 @@
 import os
 import sys
-import math
 import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
@@ -14,6 +13,7 @@ from app.db.session import engine as app_engine
 from app.db.models import Base, OSMWay, OSMWayNode, GraphNode, GraphEdge
 from .base_importer import BaseImporter
 from .etl_logger import EtlLogger
+from .geo import haversine_distance
 
 # Speed mapping for highway types (km/h)
 DEFAULT_SPEEDS = {
@@ -47,15 +47,6 @@ ROAD_CLASS_MAP = {
     'residential': 'LOCAL',
 }
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate distance between two points in meters."""
-    R = 6371000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
-
 class GraphBuilder(BaseImporter):
     source_name = "osm_graph_builder"
     batch_size = 5000
@@ -66,9 +57,11 @@ class GraphBuilder(BaseImporter):
         self._edge_buffer: List[Dict] = []
 
     def _load_node_cache(self, session: Session):
+        """Load existing GraphNode IDs into memory. On first run this is empty."""
         if not self._node_cache:
-            for nid, onid in session.query(GraphNode.id, GraphNode.osm_node_id).all():
-                self._node_cache[onid] = nid
+            existing = session.query(GraphNode.id, GraphNode.osm_node_id).all()
+            self._node_cache = {onid: nid for nid, onid in existing}
+            self.logger.info(f"Loaded {len(self._node_cache):,} existing graph nodes into cache")
 
     def _flush_edge_buffer(self, session: Session):
         if not self._edge_buffer:
@@ -118,16 +111,13 @@ class GraphBuilder(BaseImporter):
             session.execute(GraphNode.__table__.insert(), new_osm_nodes)
             session.flush()
             new_osm_ids = [entry['osm_node_id'] for entry in new_osm_nodes]
-            if len(new_osm_ids) <= 900:
+            IN_CLAUSE_LIMIT = 900
+            for i in range(0, len(new_osm_ids), IN_CLAUSE_LIMIT):
+                chunk = new_osm_ids[i:i + IN_CLAUSE_LIMIT]
                 for gn_id, gn_osm_id in session.query(GraphNode.id, GraphNode.osm_node_id).filter(
-                    GraphNode.osm_node_id.in_(new_osm_ids)
+                    GraphNode.osm_node_id.in_(chunk)
                 ).all():
                     self._node_cache[gn_osm_id] = gn_id
-            else:
-                for entry in new_osm_nodes:
-                    oid = entry['osm_node_id']
-                    gn = session.query(GraphNode).filter_by(osm_node_id=oid).first()
-                    self._node_cache[oid] = gn.id
 
         # Create edges using cached IDs
         for i in range(len(osm_nids) - 1):
@@ -154,12 +144,22 @@ class GraphBuilder(BaseImporter):
                 self._edge_buffer.append(dict(source_node_id=dst_id, dest_node_id=src_id,
                                               direction='BACKWARD', **edge_base))
 
-    def _load_way_nodes_bulk(self, session: Session):
-        """Pre-load all OSMWayNode records into a dict keyed by way_id to avoid N+1 queries."""
-        self._way_nodes_cache: Dict[int, List[OSMWayNode]] = {}
-        all_nodes = session.query(OSMWayNode).order_by(OSMWayNode.way_id, OSMWayNode.sequence).all()
-        for wn in all_nodes:
-            self._way_nodes_cache.setdefault(wn.way_id, []).append(wn)
+    def _load_way_nodes_for_batch(self, session: Session, way_ids: List[int]):
+        """Load OSMWayNode records for a specific set of way_ids (chunked to avoid SQLite ? limit)."""
+        self._way_nodes_cache = {}
+        if not way_ids:
+            return
+        IN_CHUNK = 450
+        for i in range(0, len(way_ids), IN_CHUNK):
+            chunk = way_ids[i:i + IN_CHUNK]
+            nodes = session.query(OSMWayNode).filter(
+                OSMWayNode.way_id.in_(chunk)
+            ).order_by(OSMWayNode.way_id, OSMWayNode.sequence).all()
+            for wn in nodes:
+                self._way_nodes_cache.setdefault(wn.way_id, []).append(wn)
+
+    def _count_unprocessed(self, session: Session) -> int:
+        return session.query(func.count(OSMWay.id)).filter(OSMWay.processed_at == None).scalar()
 
     def run(self, dry_run: bool = False, metadata: Optional[dict] = None) -> Dict[str, Any]:
         if dry_run:
@@ -170,31 +170,44 @@ class GraphBuilder(BaseImporter):
         try:
             self._node_cache = {}
             self._load_node_cache(session)
-            self._load_way_nodes_bulk(session)
 
-            # Find unprocessed ways
-            unprocessed_ways = session.query(OSMWay).filter(OSMWay.processed_at == None).all()
-            total = len(unprocessed_ways)
-            
+            total = self._count_unprocessed(session)
             self.start_batch(total_records=total, metadata=metadata)
-            
-            for i, way in enumerate(unprocessed_ways):
-                try:
-                    self.process_way(session, way)
-                    way.processed_at = datetime.utcnow()
-                    
-                    if (i + 1) % self.batch_size == 0:
-                        self._flush_edge_buffer(session)
-                        session.commit()
-                        self._counters["inserted"] += self.batch_size
-                        self.logger.info(f"Processed {i+1}/{total} ways...")
-                except Exception as e:
-                    self.logger.exception(f"Failed to process way {way.id}: {e}")
-                    self._counters["errors"] += 1
-            
-            self._flush_edge_buffer(session)
-            session.commit()
-            self._counters["inserted"] = total - self._counters.get("errors", 0)
+            self.logger.info(f"Graph build: {total:,} unprocessed ways to process")
+
+            WAY_BATCH = 5000
+            last_id = 0
+            processed_total = 0
+
+            while True:
+                batch_ways = session.query(OSMWay).filter(
+                    OSMWay.processed_at == None,
+                    OSMWay.id > last_id,
+                ).order_by(OSMWay.id).limit(WAY_BATCH).all()
+                if not batch_ways:
+                    break
+
+                way_ids = [w.id for w in batch_ways]
+                self._load_way_nodes_for_batch(session, way_ids)
+
+                for way in batch_ways:
+                    try:
+                        self.process_way(session, way)
+                        way.processed_at = datetime.utcnow()
+                        processed_total += 1
+                    except Exception as e:
+                        self.logger.exception(f"Failed to process way {way.id}: {e}")
+                        self._counters["errors"] += 1
+
+                self._flush_edge_buffer(session)
+                session.commit()
+                self._counters["inserted"] = len(batch_ways) - min(self._counters["errors"], len(batch_ways))
+                last_id = batch_ways[-1].id
+                self.logger.info(f"Processed batch up to id={last_id:,} ({processed_total:,}/{total:,})")
+
+                self._way_nodes_cache.clear()
+
+            self._counters["inserted"] = processed_total - self._counters.get("errors", 0)
             self.end_batch("COMPLETED")
         except Exception as e:
             session.rollback()
