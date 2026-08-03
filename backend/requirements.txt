@@ -1,7 +1,7 @@
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 sqlalchemy>=2.0.28
-geoalchemy2>=0.14.3
+psycopg2-binary>=2.9.0
 pydantic>=2.7.0
 pydantic-settings>=2.2.1
 alembic>=1.13.0
@@ -10,7 +10,5 @@ joblib>=1.3.0
 osmium>=3.6.0
 requests>=2.31.0
 numpy>=1.24.0
-pandas>=2.0.0
 httpx>=0.27.0
-python-dotenv>=1.0.0
-prometheus_client>=0.20.0
+psutil>=5.9.0
