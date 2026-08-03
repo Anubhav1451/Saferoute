@@ -1,6 +1,7 @@
 # app/api/v1/sos.py
 import logging
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.sos import SOSRequest
@@ -51,15 +52,26 @@ async def trigger_sos(
         )
 
     except ValueError as e:
-        return error_response(
-            error=str(e),
-            error_code="VALIDATION_ERROR",
-            message="Invalid input data for SOS request"
+        # SEC-16 (T4): return a real HTTP status code (400) instead of the
+        # previous bare dict that FastAPI serialized as HTTP 200. The JSON
+        # body is unchanged.
+        logger.warning("SOS validation failed: %s", e)
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_response(
+                error=str(e),
+                error_code="VALIDATION_ERROR",
+                message="Invalid input data for SOS request"
+            )
         )
-    except Exception as e:
+    except Exception:
+        # SEC-16 (T4): 500 instead of HTTP 200 for server-side failures.
         logger.exception("SOS simulation failed")
-        return error_response(
-            error="Internal server error",
-            error_code="INTERNAL_ERROR",
-            message="Failed to process SOS request"
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_response(
+                error="Internal server error",
+                error_code="INTERNAL_ERROR",
+                message="Failed to process SOS request"
+            )
         )

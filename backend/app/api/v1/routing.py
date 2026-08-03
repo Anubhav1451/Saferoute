@@ -1,12 +1,12 @@
 # app/api/v1/routing.py
 import asyncio
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.routing import SafetyRoutingService
-from app.schemas.routing import RouteRequest, RouteResponse
+from app.schemas.routing import RouteRequest
 from app.api.responses import success_response, error_response
 
 router = APIRouter()

@@ -1,5 +1,5 @@
 # app/api/responses.py
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from pydantic import BaseModel
 
 
@@ -72,7 +72,6 @@ def error_response(
 # HTTP exception handler for FastAPI
 async def http_exception_handler(request, exc):
     """Handle HTTP exceptions and return standardized response"""
-    from fastapi import Request
     from fastapi.responses import JSONResponse
 
     return JSONResponse(
@@ -88,11 +87,11 @@ async def http_exception_handler(request, exc):
 # General exception handler
 async def general_exception_handler(request, exc):
     """Handle unexpected exceptions and return standardized response"""
-    from fastapi import Request
+    import logging
     from fastapi.responses import JSONResponse
 
-    # Log the exception (in production, use proper logging)
-    print(f"Unhandled exception: {exc}")
+    logger = logging.getLogger("saferoute.api")
+    logger.exception("Unhandled exception", exc_info=exc)
 
     return JSONResponse(
         status_code=500,

@@ -11,8 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Optional
+import logging
 from app.db.session import get_db
 from ml.safety_model import predict_safety_score
+
+logger = logging.getLogger("saferoute.api.ai")
 
 router = APIRouter(prefix="/ai", tags=["ai-safety"])
 
@@ -63,8 +66,12 @@ def get_safety_score(
             "message": "Safety score retrieved successfully"
         }
 
-    except Exception as e:
+    except Exception:
+        # SEC-15: log the real exception server-side but never echo it back.
+        # The previous detail=f"Failed to calculate safety score: {str(e)}"
+        # leaked engine/internal error text to clients in 500 responses.
+        logger.exception("Failed to calculate safety score")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to calculate safety score: {str(e)}"
+            detail="Failed to calculate safety score"
         )
