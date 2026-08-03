@@ -1,0 +1,208 @@
+# Performance Optimization Checklist
+
+## Performance Baseline Establishment
+### Metrics Collection
+- [ ] Establish baseline for key performance indicators (KPIs)
+- [ ] Measure response times (p50, p95, p99, max)
+- [ ] Track throughput (requests/second, transactions/second)
+- [ ] Monitor error rates and failure percentages
+- [ ] Record resource utilization (CPU, memory, disk, network)
+- [ ] Measure database query performance and connection pool usage
+- [ ] Track external API call latency and reliability
+- [ ] Monitor cache hit/miss ratios and eviction rates
+- [ ] Measure page load times (for web applications)
+- [ ] Track business transaction completion times
+- [ ] Record garbage collection frequency and duration
+- [ ] Monitor thread pool utilization and queue depths
+- [ ] Track queue processing latency and backlog
+- [ ] Measure startup and initialization times
+
+### Workload Characterization
+- [ ] Define typical usage patterns and user journeys
+- [ ] Identify peak usage times and seasonal variations
+- [ ] Characterize request payload sizes and frequency
+- [ ] Determine geographic distribution of users
+- [ ] Identify bursty vs steady traffic patterns
+- [ ] Document business transaction mix and frequencies
+- [ ] Establish baseline for concurrent users/sessions
+- [ ] Identify long-running batch or scheduled processes
+- [ ] Characterize data access patterns and volumes
+- [ ] Determine acceptable performance thresholds (SLAs/SLOs)
+
+### Monitoring & Instrumentation
+- [ ] Ensure APM (Application Performance Monitoring) is deployed
+- [ ] Verify distributed tracing is operational
+- [ ] Confirm custom business metrics are instrumented
+- [ ] Validate infrastructure monitoring is collecting metrics
+- [ ] Ensure log aggregation includes performance-relevant data
+- [ ] Confirm real-user monitoring (RUM) is enabled for web
+- [ ] Validate synthetic transaction monitoring is configured
+- [ ] Ensure alerting thresholds are set for performance degradation
+- [ ] Verify dashboard visibility for performance metrics
+- [ ] Confirm baselines are established for auto-scaling policies
+
+## Code-Level Optimizations
+### Algorithms & Data Structures
+- [ ] Review time complexity of critical operations (aim for O(log n) or better)
+- [ ] Eliminate unnecessary O(n²) or worse algorithms
+- [ ] Use appropriate data structures for access patterns (hash maps, trees, etc.)
+- [ ] Implement caching for expensive computations with proper invalidation
+- [ ] Use memoization for pure functions with repetitive inputs
+- [ ] Optimize loop invariants and move calculations outside loops
+- [ ] Replace recursion with iteration where stack depth is concerns
+- [ ] Use bitwise operations where appropriate for performance
+- [ ] Pre-compile regular expressions used frequently
+- [ ] Optimize string operations (avoid concatenation in loops, use builders)
+- [ ] Use primitive types over wrapper objects where performance critical
+- [ ] Consider object pooling for expensive-to-create objects
+- [ ] Implement lazy initialization for rarely used resources
+- [ ] Use parallel streams or async processing for embarrassingly parallel tasks
+
+### I/O & Network Operations
+- [ ] Batch database operations where possible (inserts, updates, reads)
+- [ ] Implement connection pooling and monitor pool utilization
+- [ ] Use prepared statements for repeated database queries
+- [ ] Fetch only required columns instead of SELECT *
+- [ ] Apply proper indexing strategies for query patterns
+- [ ] Eliminate N+1 query problems through eager loading or batching
+- [ ] Use appropriate fetch sizes for database drivers
+- [ ] Stream large file operations instead of loading entirely into memory
+- [ ] Implement request/response compression (gzip, brotli)
+- [ ] Utilize HTTP keep-alive connections to reduce handshake overhead
+- [ ] Implement DNS caching at the application level
+- [ ] Set appropriate timeouts for network operations
+- [ ] Implement retry logic with exponential backoff and jitter
+- [ ] Use circuit breakers for external service dependencies
+- [ ] Apply bulkheads to isolate different types of operations
+- [ ] Implement load shedding for extreme load scenarios
+- [ ] Consider server push technologies (WebSockets, Server-Sent Events)
+- [ ] Optimize polling intervals for resource usage vs freshness trade-off
+
+### Resource Management
+- [ ] Eliminate memory leaks through proper resource disposal
+- [ ] Prevent file descriptor leaks with proper closing
+- [ ] Eliminate database connection leaks with proper pool usage
+- [ ] Prevent thread leaks through proper executor service shutdown
+- [ ] Use try-with-resources or equivalent patterns for automatic cleanup
+- [ ] Avoid finalizers that can delay garbage collection
+- [ ] Monitor and reduce garbage collection pressure
+- [ ] Understand object lifecycle and optimize creation/destruction
+- [ ] Implement object pools for expensive resources (database connections, etc.)
+- [ ] Use lazy evaluation where appropriate to defer computation
+- [ ] Avoid eager loading when laziness would be more efficient
+- [ ] Consider memory-mapped files for large sequential access patterns
+- [ ] Use direct buffers for I/O-heavy operations where applicable
+- [ ] Check for native resource leaks (JNI, P/Invoke, etc.)
+- [ ] Configure appropriate resource limits for containers
+- [ ] Understand OOM killer behavior and set appropriate margins
+- [ ] Configure swappiness based on workload characteristics
+- [ ] Consider huge pages for large memory workloads
+- [ ] Optimize for NUMA architecture in multi-socket systems
+
+## Database Optimizations
+### Indexing Strategy
+- [ ] Ensure indexes support query patterns from workload analysis
+- [ ] Create covering indexes for frequent SELECT patterns
+- [ ] Evaluate composite indexes for multi-column WHERE/JOIN clauses
+- [ ] Avoid low-selectivity indexes that provide minimal benefit
+- [ ] Minimize index overlap and redundancy
+- [ ] Enable index-only scans where beneficial
+- [ ] Consider functional/index expressions for predicate optimization
+- [ ] Evaluate partitioning strategy for large tables
+- [ ] Verify partition pruning effectiveness for query patterns
+- [ ] Consider local vs global indexes for partitioned tables
+- [ ] Evaluate materialized views for expensive aggregations
+- [ ] Consider indexed views for SQL Server environments
+- [ ] Optimize clustered index selection for range queries
+- [ ] Avoid heap tables for frequent lookup workloads
+- [ ] Configure appropriate fill factor for insert patterns
+- [ ] Establish index maintenance strategy (rebuild/reorganize)
+- [ ] Update statistics regularly for query optimization
+- [ ] Use histograms for skewed data distributions
+- [ ] Consider filtered indexes for subset queries
+- [ ] Utilize include columns for covering indexes
+- [ ] Evaluate index compression for space savings
+- [ ] Consider columnstore indexes for analytical workloads
+- [ ] Determine rowstore vs columnstore based on workload characteristics
+
+### Query Optimization
+- [ ] Review slow query logs and identify problematic queries
+- [ ] Use EXPLAIN/ANALYZE to verify query plans and identify issues
+- [ ] Apply query optimization hints judiciously when needed
+- [ ] Address parameter sniffing issues (OPTION RECOMPILE, etc.)
+- [ ] Use plan guides for persistent plan enforcement when necessary
+- [ ] Enable query store or equivalent for plan regression detection
+- [ ] Evaluate adaptive query processing features
+- [ ] Consider batch mode processing where applicable
+- [ ] Evaluate interleaved execution for table variables
+- [ ] Consider deferred compilation for temporary tables
+- [ ] Evaluate scalar UDF inlining where supported
+- [ ] Assess table-valued functions for performance impact
+- [ ] Compare temporary tables vs table variables for use cases
+- [ ] Evaluate memory-optimized tables for OLTP workloads
+- [ ] Consider natively compiled stored procedures
+- [ ] Analyze locking and blocking to minimize contention
+- [ ] Implement deadlock prevention strategies
+- [ ] Understand and select appropriate isolation levels
+- [ ] Evaluate snapshot isolation or read-committed snapshot
+- [ ] Configure lock escalation thresholds appropriately
+- [ ] Understand row versioning overhead implications
+- [ ] Optimize tempdb configuration for workload
+- [ ] Configure multiple data files for tempdb
+- [ ] Set appropriate auto-grow settings
+- [ ] Enable instant file initialization where possible
+- [ ] Manage log file sizing and VLF (Virtual Log File) count
+- [ ] Monitor log shipping or availability groups for lag
+- [ ] Evaluate read-scale solutions for read-heavy workloads
+- [ ] Configure and monitor database connection pooling
+- [ ] Consider application-level query caching for repeated queries
+- [ ] Evaluate result set caching for repeated queries with same parameters
+- [ ] Implement query notification for cache invalidation strategies
+- [ ] Consider change tracking for synchronous invalidation
+- [ ] Evaluate change data capture for asynchronous processing needs
+- [ ] Use query governor or resource semaphore to limit runaway queries
+- [ ] Configure maximum degree of parallelism (MAXDOP) appropriately
+- [ ] Tune cost threshold for parallelism based on workload
+- [ ] Evaluate parallelism advisories and implement recommendations
+- [ ] Consider minimal logging for bulk load operations
+- [ ] Evaluate target recovery time for availability requirements
+- [ ] Configure log shipping delay appropriately
+- [ ] Assess failover clustering for HA requirements
+- [ ] Evaluate AlwaysOn availability groups for HA+DR needs
+- [ ] Consider basic availability groups for simpler HA requirements
+- [ ] Evaluate load balancing of read workloads
+- [ ] Consider read intent connection strings for read-heavy scenarios
+- [ ] Measure end-to-end application latency
+- [ ] Optimize network latency between application and database
+- [ ] Monitor packet loss and retransmissions in network
+- [ ] Ensure MTU size is optimized for network path
+- [ ] Consider jumbo frames where supported end-to-end
+- [ ] Evaluate TCP tuning (window scaling, timestamps, SACK)
+- [ ] Assess NIC offload features and configure appropriately
+- [ ] Implement interrupt moderation for latency-sensitive workloads
+- [ ] Configure receive-side scaling (RSS) for multi-core NICs
+- [ ] Set interrupt affinity appropriately
+- [ ] Evaluate polling vs interrupt mode for NICs
+- [ ] Verify and optimize DMA usage
+- [ ] Consider hardware timestamping for precision timing needs
+- [ ] Understand network virtualization overhead (VXLAN, NVGRE)
+- [ ] Optimize load balancer health check frequency
+- [ ] Ensure health check endpoints are lightweight and cacheable
+- [ ] Configure appropriate connection drain time
+- [ ] Understand and minimize SSL/TLS handshake overhead
+- [ ] Implement session resumption where applicable
+- [ ] Enable OCSP stapling for certificate validation
+- [ ] Evaluate certificate pinning for thick/mobile clients
+- [ ] Utilize ALPN for HTTP/2 negotiation
+- [ ] Consider HTTP/2 evaluation for multiplexing benefits
+- [ ] Evaluate HTTP/3 for UDP-based performance benefits
+- [ ] Implement SSL/TLS session caching
+- [ ] Rotate SSL/TLS ticket keys appropriately
+- [ ] Evaluate SANE (Subject Alternative Name) for multiple hostnames
+- [ ] Consider certificate transparency monitoring
+- [ ] Evaluate OCSP must-staple where appropriate
+- [ ] Configure certificate revocation checking appropriately
+- [ ] Consider HSTS preloading for domains
+- [ ] Evaluate HPKE for forward secrecy benefits
+- [ ] Assess post-quantum cryptography for future readiness
+- [ ] Consider TLS 1.3 evaluation for performance and security

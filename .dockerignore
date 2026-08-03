@@ -1,0 +1,65 @@
+# Git
+.git
+.gitignore
+
+# Docker
+.dockerignore
+
+# Environment variables
+.env
+.env.*
+! .env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+
+# Coverage directory used by instruments
+coverage/
+.nyc_output
+
+# Dependency directories
+node_modules/
+backend/.venv/
+backend/venv/
+frontend/node_modules/
+
+# Build outputs
+.frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
+backend/__pycache__/
+backend/*.py[cod]
+backend/*.pyo
+backend/*.pyd
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mypy_cache/
+backend/*.log
+backend/*.sqlite
+backend/*.sqlite3
+backend/saferoute.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Miscellaneous
+*.backup
+CLEANUP_EXECUTION.csv
+cleanup_log.csv
+cleanup_log.txt

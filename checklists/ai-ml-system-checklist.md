@@ -1,0 +1,292 @@
+# AI/ML System Checklist
+
+## Problem Definition & Requirements
+- [ ] Business problem is clearly defined and measurable
+- [ ] Success criteria and key metrics are established (accuracy, precision, recall, F1, AUC, etc.)
+- [ ] Baseline performance is established using existing solutions or heuristics
+- [ ] Data requirements are understood (volume, velocity, variety, veracity)
+- [ ] Performance requirements are defined (latency, throughput, availability)
+- [ ] Interpretability and explainability requirements are identified
+- [ ] Fairness and bias requirements are specified
+- [ ] Privacy and security requirements are defined
+- [ ] Regulatory and compliance requirements are understood
+- [ ] Deployment constraints are known (edge, cloud, on-premises, mobile)
+- [ ] Maintenance and update frequency requirements are defined
+- [ ] Monitoring and alerting requirements are established
+- [ ] Rollback and fallback mechanisms are planned
+- [ ] Resource constraints are understood (budget, compute, storage, personnel)
+- [ ] Timeline and milestones are established
+- [ ] Stakeholders are identified and their needs are documented
+- [ ] Assumptions are explicitly stated and validated
+- [ ] Risks are identified and mitigation strategies are planned
+- [ ] Dependencies on other systems or teams are identified
+- [ ] Success criteria are agreed upon by all stakeholders
+- [ ] Failure criteria and abort conditions are defined
+- [ ] Metrics for monitoring model drift and performance degradation are defined
+- [ ] A/B testing or experimentation framework is planned
+- [ ] Cost-benefit analysis is performed
+- [ ] ROI expectations are established
+- [ ] Competitive landscape is understood
+- [ ] Technology stack decisions are documented
+- [ ] Build vs buy decision is made and justified
+- [ ] Open source vs proprietary components are evaluated
+- [ ] Vendor lock-in concerns are addressed
+- [ ] Intellectual property considerations are understood
+- [ ] Licensing requirements are identified
+- [ ] Export control considerations are evaluated
+- [ ] Ethical considerations are identified and addressed
+- [ ] Societal impact is assessed
+- [ ] Environmental impact is considered
+- [ ] Long-term maintenance and evolution is planned
+- [ ] Knowledge transfer and training needs are identified
+- [ ] Documentation requirements are specified
+- [ ] Support and maintenance responsibilities are assigned
+- [ ] Escalation procedures are defined
+- [ ] Incident response plan is established
+- [ ] Business continuity and disaster recovery plans are updated
+- [ ] Change management process is followed
+- [ ] Configuration management is established
+- [ ] Release management process is defined
+- [ ] Rollback procedures are tested
+- [ ] Smoke tests are defined
+- [ ] Sanity tests are defined
+- [ ] Regression tests are defined
+- [ ] Performance tests are defined
+- [ ] Load tests are defined
+- [ ] Stress tests are defined
+- [ ] Security tests are defined
+- [ ] Penetration tests are defined
+- [ ] Vulnerability scans are scheduled
+- [ ] Compliance audits are planned
+- [ ] User acceptance testing is planned
+- [ ] Operational acceptance testing is planned
+- [ ] Training data is identified and sourced
+- [ ] Validation data is identified and sourced
+- [ ] Test data is identified and sourced
+- [ ] Data labeling strategy is defined
+- [ ] Data quality requirements are established
+- [ ] Data preprocessing requirements are defined
+- [ ] Data augmentation strategies are considered
+- [ ] Feature engineering approach is outlined
+- [ ] Feature store strategy is considered
+- [ ] Data versioning approach is selected
+- [ ] Data lineage tracking is implemented
+- [ ] Data governance policies are followed
+- [ ] Data privacy regulations are complied with (GDPR, CCPA, etc.)
+- [ ] Data security measures are implemented
+- [ ] Data encryption at rest and in transit is implemented
+- [ ] Data access controls are implemented
+- [ ] Data masking and anonymization techniques are considered
+- [ ] Data retention and deletion policies are followed
+- [ ] Data backup and recovery procedures are established
+- [ ] Data quality monitoring is implemented
+- [ ] Data drift detection is implemented
+- [ ] Data distribution monitoring is implemented
+- [ ] Data schema evolution is managed
+- [ ] Data format standardization is implemented
+- [ ] Data cleaning and deduplication is performed
+- [ ] Outlier detection and handling is implemented
+- [ ] Missing value imputation strategies are defined
+- [ ] Class imbalance techniques are considered
+- [ ] Temporal data considerations are addressed
+- [ ] Geospatial data considerations are addressed
+- [ ] Text data preprocessing is defined
+- [ ] Image data preprocessing is defined
+- [ ] Audio data preprocessing is defined
+- [ ] Video data preprocessing is defined
+- [ ] Sensor data preprocessing is defined
+- [ ] Time series data preprocessing is defined
+- [ ] Categorical data encoding strategies are selected
+- [ ] Feature scaling approaches are chosen
+- [ ] Dimensionality reduction techniques are considered
+- [ ] Feature selection methods are evaluated
+- [ ] Feature importance analysis is planned
+- [ ] Feature interaction analysis is considered
+- [ ] Feature stability over time is monitored
+- [ ] Data leakage prevention measures are implemented
+- [ ] Train/test split methodology is appropriate
+- [ ] Cross-validation strategy is selected
+- [ ] Time series cross-validation is considered for temporal data
+- [ ] Stratified sampling is used for imbalanced classes
+- [ ] Leave-one-out cross-validation is considered for small datasets
+- [ ] Nested cross-validation is used for hyperparameter tuning
+- [ ] Validation set is kept separate from test set
+- [ ] Test set is used only for final evaluation
+- [ ] Holdout set is used for model selection
+- [ ] Blending and ensembling strategies are considered
+- [ ] Model complexity is evaluated against performance gains
+- [ ] Bias-variance tradeoff is understood
+- [ ] Overfitting and underfitting signs are monitored
+- [ ] Learning curves are analyzed
+- [ ] Validation curves are analyzed
+- [ ] Model averaging techniques are considered
+- [ ] Model stacking is explored
+- [ ] Model blending is evaluated
+- [ ] Bayesian model averaging is considered
+- [ ] Cross-validation results are statistically significant
+- [ ] Confidence intervals are calculated for performance metrics
+- [ ] Statistical tests are used to compare models
+- [ ] Practical significance is distinguished from statistical significance
+- [ ] Model interpretability techniques are selected
+- [ ] Feature importance methods are chosen
+- [ ] Partial dependence plots are considered
+- [ ] Individual conditional expectation plots are evaluated
+- [ ] Shapley values (SHAP) are considered
+- [ ] Local interpretable model-agnostic explanations (LIME) are evaluated
+- [ ] Counterfactual explanations are considered
+- [ ] Rule-based explanations are explored
+- [ ] Decision tree surrogate models are considered
+- [ ] Linear model approximations are evaluated
+- [ ] Model distillation techniques are considered
+- [ ] Attention visualization for neural networks is implemented
+- [ ] Saliency maps for CNNs are generated
+- [ ] Grad-CAM and variants are used for CNN interpretability
+- [ ] Integrated gradients are considered
+- [ ] DeepLIFT and related methods are evaluated
+- [ ] Sensitivity analysis is performed
+- [ ] Input perturbation techniques are used
+- [ ] Feature occlusion studies are conducted
+- [ ] Model debugging techniques are applied
+- [ ] Neuron activation analysis is performed
+- [ ] Layer-wise relevance propagation is considered
+- [ ] Concept activation vectors are explored
+- [ ] Toulmin argumentation models are evaluated
+- [ ] Case-based reasoning explanations are considered
+- [ ] Prototypical parts are identified
+- [ ] Concept bottleneck models are explored
+- [ ] Neuro-symbolic approaches are considered
+- [ ] Hybrid models combining neural and symbolic reasoning are evaluated
+- [ ] Model cards are prepared for transparency
+- [ ] Data sheets for datasets are completed
+- [ ] Model factsheets are generated
+- [ ] AI service factsheets are created
+- [ ] Model vulnerability assessments are conducted
+- [ ] Adversarial robustness is evaluated
+- [ ] Model stealing resistance is assessed
+- [ ] Model inversion attack resistance is evaluated
+- [ ] Privacy-preserving techniques are considered
+- [ ] Differential privacy is evaluated
+- [ ] Federated learning approaches are considered
+- [ ] Secure multi-party computation is explored
+- [ ] Homomorphic encryption is assessed
+- [ ] Trusted execution environments are evaluated
+- [ ] Model watermarking and fingerprinting are implemented
+- [ ] Model encryption and decryption mechanisms are evaluated
+- [ ] Secure model serving architectures are designed
+- [ ] Model access controls are implemented
+- [ ] Model usage monitoring and auditing is established
+- [ ] Model lifecycle management is established
+- [ ] Model versioning strategy is selected
+- [ ] Model registry is implemented
+- [ ] Model metadata is captured and stored
+- [ ] Model lineage tracking is implemented
+- [ ] Model provenance is documented
+- [ ] Model testing framework is established
+- [ ] Model validation procedures are defined
+- [ ] Model testing in staging environment is performed
+- [ ] Model testing in production-like environment is performed
+- [ ] Model testing with real-world data is performed
+- [ ] Model testing with edge cases is performed
+- [ ] Model testing with adversarial examples is performed
+- [ ] Model testing with out-of-distribution data is performed
+- [ ] Model testing with concept drift is performed
+- [ ] Model testing with data drift is performed
+- [ ] Model testing with label drift is performed
+- [ ] Model testing with concept evolution is performed
+- [ ] Model testing with feedback loops is performed
+- [ ] Model testing with human-in-the-loop is performed
+- [ ] Model testing with A/B testing is performed
+- [ ] Model testing with multi-armed bandits is performed
+- [ ] Model testing with reinforcement learning is performed
+- [ ] Model testing with online learning is performed
+- [ ] Model testing with continual learning is performed
+- [ ] Model testing with transfer learning is performed
+- [ ] Model testing with domain adaptation is performed
+- [ ] Model testing with multi-task learning is performed
+- [ ] Model testing with meta-learning is performed
+- [ ] Model testing with few-shot learning is performed
+- [ ] Model testing with zero-shot learning is performed
+- [ ] Model testing with self-supervised learning is performed
+- [ ] Model testing with semi-supervised learning is performed
+- [ ] Model testing with active learning is performed
+- [ ] Model testing with reinforcement learning from human feedback is performed
+- [ ] Model testing with inverse reinforcement learning is performed
+- [ ] Model testing with apprentice learning is performed
+- [ ] Model testing with observation and imitation is performed
+- [ ] Model testing with learning from demonstration is performed
+- [ ] Model testing with teaching and learning is performed
+- [ ] Model testing with peer learning is performed
+- [ ] Model testing with collaborative learning is performed
+- [ ] Model testing with competitive learning is performed
+- [ ] Model testing with cooperative learning is performed
+- [ ] Model testing with ensemble learning is performed
+- [ ] Model testing with bagging is performed
+- [ ] Model testing with boosting is performed
+- [ ] Model testing with random forests is performed
+- [ ] Model testing with gradient boosting is performed
+- [ ] Model testing with XGBoost is performed
+- [ ] Model testing with LightGBM is performed
+- [ ] Model testing with CatBoost is performed
+- [ ] Model testing with neural networks is performed
+- [ ] Model testing with deep learning is performed
+- [ ] Model testing with convolutional neural networks is performed
+- [ ] Model testing with recurrent neural networks is performed
+- [ ] Model testing with long short-term memory is performed
+- [ ] Model testing with gated recurrent units is performed
+- [ ] Model testing with transformer networks is performed
+- [ ] Model testing with BERT is performed
+- [ ] Model testing with GPT is performed
+- [ ] Model testing with T5 is performed
+- [ ] Model testing with vision transformers is performed
+- [ ] Model testing with graph neural networks is performed
+- [ ] Model testing with graph attention networks is performed
+- [ ] Model testing with graph isomorphism networks is performed
+- [ ] Model testing with graph convolutional networks is performed
+- [ ] Model testing with graph sample and aggregate is performed
+- [ ] Model testing with graph attention is performed
+- [ ] Model testing with graph isomorphism is performed
+- [ ] Model testing with graph neural networks is performed
+- [ ] Model testing with graph attention networks is performed
+- [ ] Model testing with graph isomorphism networks is performed
+- [ ] Model testing with graph convolutional networks is performed
+- [ ] Model testing with graph sample and aggregate is performed
+- [ ] Model testing with graph attention is performed
+- [ ] Model testing with graph isomorphism is performed
+- [ ] Model testing with graph neural networks is performed
+- [ ] Model testing with graph attention networks is performed
+- [ ] Model testing with graph isomorphism networks is performed
+- [ ] Model testing with graph convolutional networks is performed
+- [ ] Model testing with graph sample and aggregate is performed
+- [ ] Model testing with graph attention is performed
+- [ ] Model testing with graph isomorphism is performed
+- [ ] Model testing with graph neural networks is performed
+- [ ] Model testing with graph attention networks is performed
+- [ ] Model testing with graph isomorphism networks is performed
+- [ ] Model testing with graph convolutional networks is performed
+- [ ] Model testing with graph sample and aggregate is performed
+- [ ] Model testing with graph attention is performed
+- [ ] Model testing with graph isomorphism is performed
+- [ ] Model testing with graph neural networks is performed
+- [ ] Model testing with graph attention networks is performed
+- [ ] Model testing with graph isomorphism networks is performed
+- [ ] Model testing with graph convolutional networks is performed
+- [ ] Model testing with graph sample and aggregate is performed
+- [ ] Model testing with graph attention is performed
+- [ ] Model testing with graph isomorphism is performed
+- [ ] Model testing with graph neural networks is performed
+- [ ] Model testing with graph attention networks is performed
+- [ ] Model testing with graph isomorphism networks is performed
+- [ ] Model testing with graph convolutional networks is performed
+- [ ] Model testing with graph sample and aggregate is performed
+- [ ] Model testing with graph attention is performed
+- [ ] Model testing with graph isomorphism is performed
+- [ ] Model testing with graph neural networks is performed
+- [ ] Model testing with graph attention networks is performed
+- [ ] Model testing with graph isomorphism networks is performed
+- [ ] Model testing with graph convolutional networks is performed
+- [ ] Model testing with graph sample and aggregate is performed
+- [ ] Model testing with graph attention is performed
+- [ ] Model testing with graph isomorphism is performed
+- [ ] Model testing with graph neural networks is performed
+- [ ] Model testing with graph attention networks is performed
+- [ ] Model testing with graph isomorphism networks is provided

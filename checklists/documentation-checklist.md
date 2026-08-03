@@ -1,0 +1,157 @@
+# Documentation Checklist
+
+## Documentation Strategy & Planning
+- [ ] Documentation goals and audience defined
+- [ ] Documentation scope clearly outlined (what's included/excluded)
+- [ ] Documentation type identified (user guide, API reference, admin guide, etc.)
+- [ ] Documentation format selected (HTML, PDF, Markdown, etc.)
+- [ ] Documentation storage and version control strategy defined
+- [ ] Documentation review and approval process established
+- [ ] Documentation localization/internationalization requirements identified
+- [ ] Documentation accessibility requirements (WCAG 2.1) identified
+- [ ] Documentation search and discovery mechanism planned
+- [ ] Documentation feedback mechanism established
+- [ ] Documentation metrics and analytics defined
+- [ ] Documentation ownership and maintenance responsibility assigned
+- [ ] Documentation style guide and templates established
+- [ ] Documentation build and publishing process automated
+- [ ] Documentation testing and validation process defined
+- [ ] Documentation deprecation and archiving policy established
+
+## Content Quality & Accuracy
+- [ ] Documentation is accurate and up-to-date with current release
+- [ ] Technical details are correct and verified
+- [ ] Code examples are tested and working
+- [ ] Configuration examples are valid and functional
+- [ ] Screenshots and diagrams are current and relevant
+- [ ] Terminology is consistent throughout documentation
+- [ ] Acronyms are defined on first use
+- [ ] Mathematical formulas and calculations are correct
+- [ ] References and citations are accurate and properly formatted
+- [ ] Documentation follows established style guide (voice, tone, formatting)
+- [ ] Spelling, grammar, and punctuation are correct
+- [ ] Content is clear, concise, and easy to understand
+- [ ] Jargon is minimized or properly explained
+- [ ] Documentation is scoped appropriately for target audience
+- [ ] Prerequisites and assumptions are clearly stated
+- [ ] Documentation avoids marketing language and focuses on facts
+- [ ] Content is organized logically and flows naturally
+- [ ] Documentation avoids redundancy and duplication
+- [ ] Outdated or obsolete content is removed or archived
+- [ ] Documentation is free of placeholders and TODOs
+- [ ] All promised features and functionality are documented
+- [ ] Known limitations and workarounds are documented
+- [ ] Error messages and codes are documented and explained
+- [ ] Performance characteristics and benchmarks are documented
+- [ ] Security considerations and best practices are documented
+- [ ] Compliance and regulatory information is included where relevant
+- [ ] Accessibility features and considerations are documented
+- [ ] Internationalization and localization capabilities are documented
+- [ ] Deprecated features are clearly marked with migration paths
+- [ ] Experimental or beta features are appropriately labeled
+- [ ] Third-party integrations and dependencies are documented
+- [ ] Licensing and usage terms are clearly stated
+- [ ] Support and contact information is current and accurate
+- [ ] Documentation includes appropriate notices and disclaimers
+
+## Structure & Organization
+- [ ] Documentation has a clear table of contents or navigation
+- [ ] Hierarchical structure is logical and easy to follow
+- [ ] Related topics are grouped together
+- [ ] Documentation follows a consistent structure pattern
+- [ ] Similar information is presented in similar ways
+- [ ] Documentation uses appropriate heading levels and numbering
+- [ ] Cross-references and links are accurate and functional
+- [ ] Anchor links within long documents work correctly
+- [ ] External links are valid and point to correct resources
+- [ ] Documentation includes appropriate introduction and overview
+- [ ] Getting started or quick start guide is provided
+- [ ] Tutorials and step-by-step guides are included where appropriate
+- [ ] Reference material is comprehensive and easy to navigate
+- [ ] FAQ section addresses common questions and issues
+- [ ] Troubleshooting guide helps users resolve common problems
+- [ ] Glossary defines technical terms and acronyms
+- [ ] Index allows users to find specific topics quickly
+- [ ] Documentation includes appropriate examples and use cases
+- [ ] Code samples are syntactically correct and functional
+- [ ] Configuration samples are valid and usable
+- [ ] Diagrams and illustrations enhance understanding
+- [ ] Screenshots are clear, relevant, and properly annotated
+- [ ] Videos and multimedia content are high quality and functional
+- [ ] Documentation is accessible via multiple formats if needed
+- [ ] Print-friendly versions are available for long documents
+- [ ] Mobile-friendly versions are available for on-the-go access
+- [ ] Documentation supports different learning styles (text, visual, interactive)
+- [ ] Documentation includes appropriate warnings and cautions
+- [ ] Documentation follows legal requirements for notices and disclaimers
+- [ ] Documentation includes copyright and attribution information
+- [ ] Documentation indicates version number and release date
+- [ ] Documentation indicates status (draft, review, final, deprecated)
+- [ ] Documentation includes change log or revision history
+- [ ] Documentation indicates next review date or obsolescence date
+
+## Usability & Accessibility
+- [ ] Documentation is accessible to people with disabilities (WCAG 2.1 AA)
+- [ ] Text has sufficient contrast ratio against background
+- [ ] Font size is readable and resizable without loss of content
+- [ ] Documentation can be navigated using keyboard alone
+- [ ] All interactive elements are accessible and operable
+- [ ] Images and graphics have appropriate alt text
+- [ ] Videos have captions and transcripts
+- [ ] Audio content has transcripts
+- [ ] Documentation structure is logical and predictable
+- [ ] Links are descriptive and make sense out of context
+- [ ] Documentation avoids relying on color alone to convey information
+- [ ] Forms and interactive elements are properly labeled
+- [ ] Error messages are helpful and provide guidance
+- [ ] Documentation is available in multiple languages if required
+- [ ] Date and time formats are localized appropriately
+- [ ] Numerical formats are localized appropriately
+- [ ] Documentation respects right-to-left languages if needed
+- [ ] Documentation avoids flickering or flashing content
+- [ ] Documentation allows users to control timing of content
+- [ ] Documentation provides alternatives for time-based media
+- [ ] Documentation is compatible with assistive technologies
+- [ ] Documentation can be used with screen readers
+- [ ] Documentation can be used with voice recognition software
+- [ ] Documentation can be used with alternative input devices
+- [ ] Documentation supports high contrast modes
+- [ ] Documentation supports zoom and magnification
+- [ ] Documentation supports custom styling and themes
+- [ ] Documentation is available in multiple formats (HTML, PDF, EPUB)
+- [ ] Documentation supports offline access and downloading
+- [ ] Documentation supports printing and physical distribution
+- [ ] Documentation supports search and indexing
+- [ ] Documentation supports bookmarking and annotation
+- [ ] Documentation supports sharing and social features
+- [ ] Documentation supports version comparison and diffing
+- [ ] Documentation supports commenting and feedback
+- [ ] Documentation supports analytics and usage tracking
+- [ ] Documentation supports API integration and programmatic access
+- [ ] Documentation supports embedding and reuse in other contexts
+- [ ] Documentation supports accessibility testing and validation
+- [ ] Documentation supports usability testing and validation
+- [ ] Documentation supports A/B testing and experimentation
+- [ ] Documentation supports personalization and customization
+- [ ] Documentation supports contextual help and tooltips
+- [ ] Documentation supports progressive disclosure
+- [ ] Documentation supports responsive design
+- [ ] Documentation supports internationalization and localization
+- [ ] Documentation supports versioning and branching
+- [ ] Documentation supports rollback and recovery
+- [ ] Documentation supports audit trails and history
+- [ ] Documentation supports digital signatures and verification
+- [ ] Documentation supports encryption and security
+- [ ] Documentation supports backup and recovery
+- [ ] Documentation supports licensing and DRM
+- [ ] Documentation supports accessibility and inclusion
+- [ ] Documentation supports privacy and data protection
+- [ ] Documentation supports compliance and regulation
+- [ ] Documentation supports sustainability and environmental concerns
+- [ ] Documentation supports ethical considerations
+- [ ] Documentation supports safety and security
+- [ ] Documentation supports health and wellness
+- [ ] Documentation supports accessibility and inclusion
+- [ ] Documentation supports diversity and equity
+- [ ] Documentation supports accessibility and inclusion
+- [ ] Documentation supports accessibility and inclusion

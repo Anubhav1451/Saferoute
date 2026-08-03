@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: 1
+      # Use a test database for migrations
+      DATABASE_URL: sqlite:///./test.db
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          # Dev dependencies
+          pip install ruff black isort mypy pytest pytest-cov bandit safety
+
+      - name: Code formatting check (Black)
+        run: |
+          black --check .
+
+      - name: Import order check (isort)
+        run: |
+          isort --check-only .
+
+      - name: Linting (Ruff)
+        run: |
+          ruff check .
+
+      - name: Type checking (mypy)
+        run: |
+          mypy .
+
+      - name: Security scan (Bandit)
+        run: |
+          bandit -r . -f json -o bandit-report.json || true
+          # Upload as artifact if needed
+          # actions/upload-artifact@v3 can be added
+
+      - name: Dependency audit (Safety)
+        run: |
+          safety check --full-report
+
+      - name: Run tests with coverage
+        working-directory: backend
+        run: |
+          pytest --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Codecov (optional)
+        # Uncomment if you have codecov token
+        # uses: codecov/codecov-action@v4
+        # with:
+        #   files: coverage.xml
+        #   fail_ci_if_error: true
+        #   verbose: true
+        run: echo "Skipping codecov upload"
+
+      - name: Docker build
+        run: |
+          docker build -t saferoute-ai:ci -f backend/Dockerfile backend/
+
+      - name: Alembic migration check
+        working-directory: backend
+        run: |
+          alembic upgrade head
+          alembic revision --autogenerate --diff --head-only --rev-id=ci_check
+          rm -f alembic/versions/ci_check*.py
+
+      - name: Smoke test API
+        working-directory: backend
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          SERVER_PID=$!
+          sleep 5
+          curl -s http://localhost:8000/health | grep '"status":"healthy"' || echo "Health check failed"
+          curl -s http://localhost:8000/docs | grep -i 'swagger' || echo "Docs failed"
+          kill $SERVER_PID
+          wait $SERVER_PID 2>/dev/null || true

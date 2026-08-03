@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Testing / tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+coverage/
+
+# Logs & runtime artifacts
+*.log
+logs/
+*.pid
+pids
+
+# Load test / audit artifacts
+load_test_results/
+pytest_output.txt
+pytest_full_output.txt
+pipeline_output.txt
+pipeline_state.json

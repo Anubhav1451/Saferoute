@@ -1,0 +1,496 @@
+# Performance Review Checklist
+
+## Assessment Information
+- **System/Service Name**: [Name of the system or service being reviewed]
+- **Component**: [Specific component, microservice, or layer if applicable]
+- **Version/Release**: [Version being assessed]
+- **Assessment Type**: [Baseline / Pre-release / Post-release / Periodic / Incident-related]
+- **Assessment Date**: YYYY-MM-DD
+- **Assessor(s)**: [Names and roles]
+- **Stakeholders Consulted**: [Product, Engineering, Performance, SRE, etc.]
+- **Environment**: [Development / Testing / Staging / Production]
+- **Workload Profile**: [Description of typical usage patterns]
+- **Criticality Rating**: [P0/P1/P2/P3 or equivalent]
+
+## Executive Summary
+[High-level findings summary, overall performance rating, key recommendations]
+
+### Overall Performance Rating
+- [ ] Excellent (meets/exceeds all targets with headroom)
+- [ ] Good (meets all targets, limited headroom)
+- [ ] Adequate (meets minimum targets, concerns for peak loads)
+- [ ] Marginal (fails some targets under expected load)
+- [ ] Poor (fails to meet basic performance requirements)
+- [ ] Unknown (insufficient data to assess)
+
+### Recommendation Summary
+- [ ] Immediate optimization required (critical performance issues)
+- [ ] Performance tuning recommended within 2 weeks (high impact)
+- [ ] Optimization recommended within 1 month (medium impact)
+- [ ] Consider for next release cycle (low impact)
+- [ ] No action required (performance acceptable)
+
+## 1. Performance Requirements and Goals
+### Defined Performance Targets
+| Metric | Target | Unit | Measurement Point | Priority |
+|--------|--------|------|-------------------|----------|
+| Response Time (p50) | [e.g., < 100] | milliseconds | API Gateway | High |
+| Response Time (p95) | [e.g., < 250] | milliseconds | API Gateway | High |
+| Response Time (p99) | [e.g., < 500] | milliseconds | API Gateway | High |
+| Throughput | [e.g., > 1000] | requests/second | Load Balancer | High |
+| Concurrent Users | [e.g., > 5000] | users | Application | High |
+| Error Rate | [e.g., < 0.1] | percent | Application | High |
+| Availability | [e.g., > 99.9] | percent | Service | High |
+| CPU Utilization | [e.g., < 70] | percent | Host/Container | Medium |
+| Memory Utilization | [e.g., < 80] | percent | Host/Container | Medium |
+| Disk I/O | [e.g., < 50] | MB/s | Storage | Medium |
+| Network I/O | [e.g., < 100] | MB/s | Network Interface | Medium |
+
+### Performance Objectives
+- [ ] Response time SLAs/SLOs documented and understood
+- [ ] Throughput requirements for peak loads established
+- [ ] Resource utilization efficiency goals defined
+- [ ] Latency sensitivity of operations understood
+- [ ] Scalability requirements (horizontal/vertical) documented
+- [ ] Cost-performance trade-offs evaluated
+- [ ] User experience targets (page load, interaction latency) defined
+- [ ] Batch processing windows and throughput needs defined
+- [ ] Real-time vs. batch processing requirements distinguished
+- [ ] Geographic distribution and latency considerations documented
+
+### Measurement and Monitoring
+- [ ] Performance baselines established for normal operation
+- [ ] Real-user monitoring (RUM) implemented for frontend
+- [ ] Synthetic transaction monitoring configured
+- [ ] Application Performance Monitoring (APM) deployed
+- [ ] Infrastructure monitoring collecting key metrics
+- [ ] Network monitoring for latency and packet loss
+- [ ] Database performance monitoring enabled
+- [ ] Cache hit/miss ratios monitored
+- [ ] Queue depths and processing latency tracked
+- [ ] Business transaction tracing implemented
+- [ ] Custom business KPIs instrumented
+- [ ] Alert thresholds defined for performance degradation
+- [ ] Performance dashboards available to stakeholders
+- [ ] Historical trending and forecasting capabilities
+- [ ] Service-level objectives (SLOs) monitored and alerted on
+- [ ] Error budget tracking implemented
+
+## 2. Application Performance
+### Code-Level Performance
+#### Algorithms and Data Structures
+- [ ] Time complexity of critical operations analyzed (O(n), O(log n), etc.)
+- [ ] Space complexity evaluated for memory usage
+- [ ] Appropriate data structures selected for access patterns
+- [ ] Caching strategies implemented for expensive computations
+- [ ] Memoization used where beneficial for pure functions
+- [ ] Loop optimizations performed (loop invariants, strength reduction)
+- [ ] Recursion evaluated for stack overflow risks
+- [ ] Parallelism and concurrency considered where applicable
+- [ ] Asynchronous operations used for I/O-bound tasks
+- [ ] Blocking operations identified and minimized in critical paths
+- [ ] Lock contention analyzed and minimized
+- [ ] Wait-free or lock-free data structures considered where beneficial
+- [ ] String operations optimized (avoiding concatenation in loops)
+- [ ] Regular expressions pre-compiled where used repeatedly
+- [ ] JSON parsing/serialization optimized
+- [ ] Object allocation minimized in hot paths
+- [ ] Object pooling considered for expensive-to-create objects
+- [ ] Lazy initialization implemented where appropriate
+- [ ] Eager evaluation avoided where laziness would be better
+
+#### I/O and Network Operations
+- [ ] Database queries optimized (index usage, query planning)
+- [ ] N+1 query problems identified and resolved
+- [ ] Batch operations used where beneficial (inserts, updates, fetches)
+- [ ] Connection pooling configured and monitored
+- [ ] Prepared statements used for repeated queries
+- [ ] Result set sizes limited and paginated appropriately
+- [ ] Fetch size tuned for database drivers
+- [ ] File I/O buffered appropriately
+- [ ] Large file operations streamed rather than loaded entirely
+- [ ] Network call batching implemented where possible
+- [ ] Request/response payload sizes minimized
+- [ ] Compression used for large payloads (gzip, brotli)
+- [ ] HTTP keep-alive connections utilized
+- [ ] DNS lookup caching implemented
+- [ ] Connection timeouts configured appropriately
+- [ ] Retry logic with exponential backoff and jitter
+- [ ] Circuit breakers prevent cascading failures
+- [ ] Bulkheads isolate different types of operations
+- [ ] Load shedding implemented for extreme load scenarios
+- [ ] Server push technologies evaluated (WebSockets, Server-Sent Events)
+- [ ] Polling intervals optimized for resource usage vs. freshness
+
+#### Resource Management
+- [ ] Memory leaks tested and resolved
+- [ ] File descriptor leaks tested and resolved
+- [ ] Database connection leaks tested and resolved
+- [ ] Thread leaks tested and resolved
+- [ ] Resource acquisition and release paired correctly
+- [ ] Try-with-resources or equivalent patterns used
+- [ ] Finalizers avoided where possible
+- [ ] Garbage collection pressure monitored and minimized
+- [ ] Object lifecycle understood and optimized
+- [ ] Object pooling implemented for expensive resources
+- [ ] Memory-mapped files considered for large, sequential access
+- [ ] Direct buffers considered for I/O-heavy operations
+- [ ] Native resource leaks checked (JNI, P/Invoke, etc.)
+- [ ] Resource limits configured appropriately for containers
+- [ ] OOM killer behavior understood and mitigated
+- [ ] Swappiness configured appropriately for workload
+- [ ] Huge pages considered for large memory workloads
+- [ ] NUMA awareness considered for multi-socket systems
+
+### Framework and Platform Performance
+- [ ] Framework overhead understood and budgeted
+- [ ] Lazy loading implemented where beneficial (ORM, modules)
+- [ ] Eager loading evaluated for N+1 prevention
+- [ ] Query result caching considered where appropriate
+- [ ] Second-level caching configured for ORMs
+- [ ] Template rendering optimized (caching, pre-compilation)
+- [ ] View/component rendering optimized
+- [ ] Asset pipeline optimized (minification, concatenation, caching)
+- [ ] HTTP middleware chain optimized
+- [ ] Routing efficiency evaluated
+- [ ] Serialization/deserialization format selected (JSON, Protobuf, etc.)
+- [ ] Schema evolution handled efficiently
+- [ ] Compression codec selected based on data type
+- [ ] Buffer sizes tuned for network and I/O operations
+- [ ] Thread pool sizes configured based on workload characteristics
+- [ ] Connection pool sizes configured for database and external services
+- [ ] Worker thread counts optimized for CPU-bound vs I/O-bound
+- [ ] Async/await patterns used appropriately
+- [ ] Reactive programming considered for event-driven workloads
+- [ ] Microbenchmarking performed for framework hotspots
+- [ ] Just-In-Time (JIT) compilation warmed up appropriately
+- [ ] Ahead-of-Time (AOT) compilation evaluated for startup time
+- [ ] Native image generation considered for startup time improvement
+
+## 3. Database Performance
+### Schema Design
+- [ ] Indexes support query patterns from workload analysis
+- [ ] Covering indexes considered for frequent SELECT patterns
+- [ ] Composite indexes evaluated for multi-column WHERE/JOIN clauses
+- [ ] Index cardinality appropriate (avoiding low-selectivity indexes)
+- [ ] Index overlap/minimization reviewed
+- [ ] Index-only scans possible where beneficial
+- [ ] Functional/index expressions considered for predicates
+- [ ] Partitioning strategy evaluated for large tables
+- [ ] Partition pruning effective for query patterns
+- [ ] Local and global indexes considered for partitioned tables
+- [ ] Materialized views evaluated for expensive aggregations
+- [ ] Indexed views considered for SQL Server
+- [ ] Clustered index selection optimized for range queries
+- [ ] Heap tables avoided for frequent lookup workloads
+- [ ] Fill factor configured appropriately for insert patterns
+- [ ] Index maintenance strategy defined (rebuild/reorganize)
+- [ ] Statistics updated regularly for query optimization
+- [ ] Histograms used for skewed data distributions
+- [ ] Filtered indexes considered for subset queries
+- [ ] Include columns used for covering indexes
+- [ ] Index compression evaluated for space savings
+- [ ] Columnstore indexes evaluated for analytical workloads
+- [ ] Rowstore vs columnstore evaluated based on workload
+
+### Query Performance
+- [ ] Slow query log reviewed and analyzed
+- [ ] EXPLAIN/ANALYZE used to verify query plans
+- [ ] Query optimization hints used judiciously
+- [ ] Parameter sniffing issues addressed (OPTION RECOMPILE, etc.)
+- [ ] Plan guides used for persistent plan enforcement
+- [ ] Query store or equivalent enabled for plan regression detection
+- [ ] Adaptive query processing features evaluated
+- [ ] Batch mode processing considered where applicable
+- [ ] Interleaved execution evaluated for table variables
+- [ ] Deferred compilation considered for temporary tables
+- [ ] Scalar UDF inlining considered where supported
+- [ ] Table-valued functions evaluated for performance impact
+- [ ] Temporary tables vs table variables evaluated
+- [ ] Memory-optimized tables evaluated for OLTP workloads
+- [ ] Natively compiled stored procedures evaluated
+- [ ] Locking and blocking analyzed and minimized
+- [ ] Deadlock prevention strategies implemented
+- [ ] Isolation levels understood and selected appropriately
+- [ ] Snapshot isolation or read-committed snapshot evaluated
+- [ ] Lock escalation thresholds configured appropriately
+- [ ] Row versioning overhead understood
+- [ ] Tempdb configuration optimized for workload
+- [ ] Multiple data files for tempdb configured
+- [ ] Auto-grow settings configured appropriately
+- [ ] Instant file initialization enabled where possible
+- [ ] Log file sizing and VLF management understood
+- [ ] Log shipping or availability groups monitored for lag
+- [ ] Read-scale solutions evaluated for read-heavy workloads
+- [ ] Connection pooling configured and monitored
+- [ ] Application-level query caching considered
+- [ ] Result set caching evaluated for repeated queries
+- [ ] Query notification considered for cache invalidation
+- [ ] Change tracking evaluated for synchronous invalidation
+- [ ] Change data capture evaluated for asynchronous processing
+- [ ] Query governor or resource semaphore used to limit runaway queries
+- [ ] Maximum degree of parallelism (MAXDOP) configured appropriately
+- [ ] Cost threshold for parallelism tuned
+- [ ] Parallelism advisories evaluated and implemented
+- [ ] Minimal logging considered for bulk loads
+- [ ] Target recovery time evaluated for availability needs
+- [ ] Log shipping delay configured appropriately
+- [ ] Failover clustering evaluated for HA needs
+- [ ] AlwaysOn availability groups evaluated for HA+DR
+- [ ] Basic availability groups evaluated for simpler HA needs
+- [ ] Load balancing of read workloads evaluated
+- [ ] Read intent connection strings considered
+- [ ] Application latency measured end-to-end
+- [ ] Network latency between app and DB measured and optimized
+- [ ] Packet loss and retransmissions monitored
+- [ ] MTU size optimized for network path
+- [ ] Jumbo frames considered where supported end-to-end
+- [ ] TCP tuning evaluated (window scaling, timestamps, SACK)
+- [ ] NIC offload features evaluated and configured appropriately
+- [ ] Interrupt moderation configured for latency-sensitive workloads
+- [ ] Receive-side scaling (RSS) configured for multi-core NICs
+- [ ] Interrupt affinity configured appropriately
+- [ ] Polling vs interrupt mode evaluated for NICs
+- [ ] DMA usage verified and optimized
+- [ ] Hardware timestamping considered for precision timing
+- [ ] Network virtualization overhead understood (VXLAN, NVGRE)
+- [ ] Load balancer health check frequency optimized
+- [ ] Health check endpoints lightweight and cacheable
+- [ ] Connection drain time configured appropriately
+- [ ] SSL/TLS handshake overhead understood and minimized
+- [ ] Session resumption used where applicable
+- [ ] OCSP stapling enabled for certificate validation
+- [ ] Certificate pinning evaluated for thick/mobile clients
+- [ ] ALPN used for HTTP/2 negotiation
+- [ ] HTTP/2 evaluation considered for multiplexing benefits
+- [ ] HTTP/3 evaluation considered for UDP benefits
+- [ ] SSL/TLS session caching implemented
+- [ ] SSL/TLS ticket keys rotated appropriately
+- [ ] SNIC evaluated for multiple hostnames on single IP
+- [ ] Certificate transparency monitoring considered
+- [ ] Certificate pinning evaluated for mobile/thick clients
+- [ ] OCSP must-staple evaluated where appropriate
+- [ ] Certificate revocation checking configured appropriately
+- [ ] HSTS preloading considered for domains
+- [ ] HPKE evaluated for forward secrecy
+- [ ] Post-quantum cryptography evaluated for future readiness
+- [ ] TLS 1.3 evaluation considered for performance and security
+- [ ] TLS false start evaluated where supported
+- [ ] Zero-RTT resumption evaluated where appropriate
+- [ ] QUIC evaluation considered for HTTP over UDP
+- [ ] HTTP/3 evaluation considered for improved performance
+- [ ] Load balancer algorithm selected based on workload (round-robin, least connections, etc.)
+- [ ] Persistence (stickiness) evaluated and configured appropriately
+- [ ] Health check protocols selected (HTTP, TCP, HTTPS)
+- [ ] Health check intervals configured appropriately
+- [ ] Health check timeouts configured appropriately
+- [ ] Healthy threshold configured appropriately
+- [ ] Unhealthy threshold configured appropriately
+- [ ] DNS TTL configured appropriately for failover scenarios
+- [ ] DNS caching behavior understood
+- [ ] DNS failover mechanisms evaluated
+- [ ] DNS SEC evaluated for authenticity and integrity
+- [ ] DNS over TLS/HTTPS evaluated for privacy considerations
+- [ ] Load balancer SSL offloading evaluated
+- [ ] Backend connection reuse evaluated
+- [ ] Idle connection timeout configured appropriately
+- [ ] Maximum connections configured appropriately
+- [ ] Connection rate limiting evaluated
+- [ ] Surge protection evaluated
+- [ ] HTTP/2 evaluation considered for multiplexing benefits
+- [ ] HTTP/3 evaluation considered for UDP benefits
+- [ ] WebSocket load balancing evaluated
+- [ ] sticky sessions evaluated for WebSocket connections
+- [ ] Health check paths for WebSocket endpoints evaluated
+- [ ] Proxy protocol evaluated for preserving client IP
+- [ ] SSL evaluation considered for simplifying TLS management
+- [ ] Proxy protocol evaluated for preserving client IP in TCP mode
+- [ ] Load balancer evaluated for layer 4 vs layer 7 trade-offs
+- [ ] Global server load balancing (GSLB) evaluated for geo-distribution
+- [ ] DNS-based GSLB evaluated
+- [ ] HTTP-based GSLB evaluated
+- [ ] Load balancer evaluated for SSL/TLS performance
+- [ ] Load balancer evaluated for HTTP/2 performance
+- [ ] Load balancer evaluated for HTTP/3 performance
+- [ ] Load balancer evaluated for WebSocket performance
+- [ ] Content delivery network (CDN) evaluated for static assets
+- [ ] CDN evaluated for dynamic content acceleration
+- [ ] CDN evaluated for edge computing capabilities
+- [ ] CDN cache invalidation strategies evaluated
+- [ ] CDN log delivery and analysis evaluated
+- [ ] CDN security features evaluated (WAF, bot management, DDoS protection)
+- [ ] CDN pricing model evaluated
+- [ ] Multi-CDN strategy evaluated
+- [ ] CDN provider evaluated for performance characteristics
+- [ ] CDN provider evaluated for security features
+- [ ] CDN provider evaluated for pricing and contract terms
+- [ ] CDN provider evaluated for support and SLAs
+- [ ] Load testing tools evaluated for realism and scalability
+- [ ] Load testing tools evaluated for protocol support
+- [ ] Load testing tools evaluated for scripting capabilities
+- [ ] Load testing tools evaluated for reporting and analytics
+- [ ] Load testing tools evaluated for CI/CD integration
+- [ ] Load testing tools evaluated for cloud vs on-premises deployment
+- [ ] Load testing tools evaluated for cost and licensing
+- [ ] Load testing tools evaluated for ease of use and learning curve
+- [ ] Load testing tools evaluated for extensibility and plugin architecture
+- [ ] Load testing tools evaluated for integration with APM and monitoring
+- [ ] Load testing tools evaluated for support for HTTP/2 and HTTP/3
+- [ ] Load testing tools evaluated for support for WebSockets
+- [ ] Load testing tools evaluated for support for gRPC
+- [ ] Load testing tools evaluated for support for SOAP
+- [ ] Load testing tools evaluated for support for REST
+- [ ] Load testing tools evaluated for support for GraphQL
+- [ ] Load testing tools evaluated for support for proprietary protocols
+- [ ] Synthetic transaction tools evaluated for realism and maintainability
+- [ ] Synthetic transaction tools evaluated for protocol support
+- [ ] Synthetic transaction tools evaluated for ease of creation and maintenance
+- [ ] Synthetic transaction tools evaluated for integration with monitoring
+- [ ] Synthetic transaction tools evaluated for support for conditional logic
+- [ ] Synthetic transaction tools evaluated for support for loops and variables
+- [ ] Synthetic transaction tools evaluated for data-driven testing
+- [ ] Synthetic transaction tools evaluated for error handling and validation
+- [ ] Synthetic transaction tools evaluated for encryption and decryption capabilities
+- [ ] Synthetic transaction tools evaluated for file upload and download support
+- [ ] Synthetic transaction tools evaluated for iframe and frame support
+- [ ] Synthetic transaction tools evaluated for popup and alert handling
+- [ ] Synthetic transaction tools evaluated for navigation and history support
+- [ ] Synthetic transaction tools evaluated for file upload and download validation
+- [ ] Synthetic transaction tools evaluated for mobile device emulation
+- [ ] Synthetic transaction tools evaluated for geolocation simulation
+- [ ] Synthetic transaction tools evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tools evaluated for cookie manipulation
+- [ ] Synthetic transaction tools evaluated for drag and drop support
+- [ ] Synthetic transaction tools evaluated for iframe and frame support
+- [ ] Synthetic transaction tools evaluated for popup and alert handling
+- [ ] Synthetic transaction tools evaluated for navigation and history support
+- [ ] Synthetic transaction tools evaluated for file upload and download validation
+- [ ] Synthetic transaction tools evaluated for mobile device emulation
+- [ ] Synthetic transaction tools evaluated for geolocation simulation
+- [ ] Synthetic transaction tools evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tools evaluated for cookie manipulation
+- [ ] Synthetic transaction tools evaluated for drag and drop support
+- [ ] Synthetic transaction tools evaluated for iframe and frame support
+- [ ] Synthetic transaction tools evaluated for popup and alert handling
+- [ ] Synthetic transaction tools evaluated for navigation and history support
+- [ ] Synthetic transaction tools evaluated for file upload and download validation
+- [ ] Synthetic transaction tools evaluated for mobile device emulation
+- [ ] Synthetic transaction tools evaluated for geolocation simulation
+- [ ] Synthetic transaction tools evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tools evaluated for cookie manipulation
+- [ ] Synthetic transaction tools evaluated for drag and drop support
+- [ ] Synthetic transaction tools evaluated for iframe and frame support
+- [ ] Synthetic transaction tools evaluated for popup and alert handling
+- [ ] Synthetic transaction tools evaluated for navigation and history support
+- [ ] Synthetic transaction tools evaluated for file upload and download validation
+- [ ] Synthetic transaction tools evaluated for mobile device emulation
+- [ ] Synthetic transaction tools evaluated for geolocation simulation
+- [ ] Synthetic transaction tools evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tools evaluated for cookie manipulation
+- [ ] Synthetic transaction tools evaluated for drag and drop support
+- [ ] Synthetic transaction tools evaluated for iframe and frame support
+- [ ] Synthetic transaction tools evaluated for popup and alert handling
+- [ ] Synthetic transaction tools evaluated for navigation and history support
+- [ ] Synthetic transaction tools evaluated for file upload and download validation
+- [ ] Synthetic transaction tools evaluated for mobile device emulation
+- [ ] Synthetic transaction tools evaluated for geolocation simulation
+- [ ] Synthetic transaction tools evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tools evaluated for cookie manipulation
+- [ ] Synthetic transaction tools evaluated for drag and drop support
+- [ ] Synthetic transaction tools evaluated for iframe and frame support
+- [ ] Synthetic transaction tools evaluated for popup and alert handling
+- [ ] Synthetic transaction tools evaluated for navigation and history support
+- [ ] Synthetic transaction tools evaluated for file upload and download validation
+- [ ] Synthetic transaction tools evaluated for mobile device emulation
+- [ ] Synthetic transaction tools evaluated for geolocation simulation
+- [ ] Synthetic transaction tools evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tools evaluated for cookie manipulation
+- [ ] Synthetic transaction tools evaluated for drag and drop support
+- [ ] Synthetic transaction tools evaluated for iframe and frame support
+- [ ] Synthetic transaction tools evaluated for popup and alert handling
+- [ ] Synthetic transaction tools evaluated for navigation and history support
+- [ ] Synthetic transaction tools evaluated for file upload and download validation
+- [ ] Synthetic transaction tools evaluated for mobile device emulation
+- [ ] Synthetic transaction tools evaluated for geolocation simulation
+- [ ] Synthetic transaction tools evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tools evaluated for cookie manipulation
+- [ ] Synthetic transaction tools evaluated for drag and drop support
+- [ ] Synthetic transaction tools evaluated for iframe and frame support
+- [ ] Synthetic transaction tools evaluated for popup and alert handling
+- [ ] Synthetic transaction tools evaluated for navigation and history support
+- [ ] Synthetic transaction tools evaluated for file upload and download validation
+- [ ] Synthetic transaction tools evaluated for mobile device emulation
+- [ ] Synthetic transaction tools evaluated for geolocation simulation
+- [ ] Synthetic transaction tools evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tokens evaluated for cookie manipulation
+- [ ] Synthetic transaction tokens evaluated for drag and drop support
+- [ ] Synthetic transaction tokens evaluated for iframe and frame support
+- [ ] Synthetic transaction tokens evaluated for popup and alert handling
+- [ ] Synthetic transaction tokens evaluated for navigation and history support
+- [ ] Synthetic transaction tokens evaluated for file upload and download validation
+- [ ] Synthetic transaction tokens evaluated for mobile device emulation
+- [ ] Synthetic transaction tokens evaluated for geolocation simulation
+- [ ] Synthetic transaction tokens evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tokens evaluated for cookie manipulation
+- [ ] Synthetic transaction tokens evaluated for drag and drop support
+- [ ] Synthetic transaction tokens evaluated for iframe and frame support
+- [ ] Synthetic transaction tokens evaluated for popup and alert handling
+- [ ] Synthetic transaction tokens evaluated for navigation and history support
+- [ ] Synthetic transaction tokens evaluated for file upload and download validation
+- [ ] Synthetic transaction tokens evaluated for mobile device emulation
+- [ ] Synthetic transaction tokens evaluated for geolocation simulation
+- [ ] Synthetic transaction tokens evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tokens evaluated for cookie manipulation
+- [ ] Synthetic transaction tokens evaluated for drag and drop support
+- [ ] Synthetic transaction tokens evaluated for iframe and frame support
+- [ ] Synthetic transaction tokens evaluated for popup and alert handling
+- [ ] Synthetic transaction tokens evaluated for navigation and history support
+- [ ] Synthetic transaction tokens evaluated for file upload and download validation
+- [ ] Synthetic transaction tokens evaluated for mobile device emulation
+- [ ] Synthetic transaction tokens evaluated for geolocation simulation
+- [ ] Synthetic transaction tokens evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tokens evaluated for cookie manipulation
+- [ ] Synthetic transaction tokens evaluated for drag and drop support
+- [ ] Synthetic transaction tokens evaluated for iframe and frame support
+- [ ] Synthetic transaction tokens evaluated for popup and alert handling
+- [ ] Synthetic transaction tokens evaluated for navigation and history support
+- [ ] Synthetic transaction tokens evaluated for file upload and download validation
+- [ ] Synthetic transaction tokens evaluated for mobile device emulation
+- [ ] Synthetic transaction tokens evaluated for geolocation simulation
+- [ ] Synthetic transaction tokens evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tokens evaluated for cookie manipulation
+- [ ] Synthetic transaction tokens evaluated for drag and drop support
+- [ ] Synthetic transaction tokens evaluated for iframe and frame support
+- [ ] Synthetic transaction tokens evaluated for popup and alert handling
+- [ ] Synthetic transaction tokens evaluated for navigation and history support
+- [ ] Synthetic transaction tokens evaluated for file upload and download validation
+- [ ] Synthetic transaction tokens evaluated for mobile device emulation
+- [ ] Synthetic transaction tokens evaluated for geolocation simulation
+- [ ] Synthetic transaction tokens evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tokens evaluated for cookie manipulation
+- [ ] Synthetic transaction tokens evaluated for drag and drop support
+- [ ] Synthetic transaction tokens evaluated for iframe and frame support
+- [ ] Synthetic transaction tokens evaluated for popup and alert handling
+- [ ] Synthetic transaction tokens evaluated for navigation and history support
+- [ ] Synthetic transaction tokens evaluated for file upload and download validation
+- [ ] Synthetic transaction tokens evaluated for mobile device emulation
+- [ ] Synthetic transaction tokens evaluated for geolocation simulation
+- [ ] Synthetic transaction tokens evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tokens evaluated for cookie manipulation
+- [ ] Synthetic transaction tokens evaluated for drag and drop support
+- [ ] Synthetic transaction tokens evaluated for iframe and frame support
+- [ ] Synthetic transaction tokens evaluated for popup and alert handling
+- [ ] Synthetic transaction tokens evaluated for navigation and history support
+- [ ] Synthetic transaction tokens evaluated for file upload and download validation
+- [ ] Synthetic transaction tokens evaluated for mobile device emulation
+- [ ] Synthetic transaction tokens evaluated for geolocation simulation
+- [ ] Synthetic transaction tokens evaluated for localStorage and sessionStorage manipulation
+- [ ] Synthetic transaction tokens evaluated for cookie manipulation
+- [ ] Synthetic transaction tokens evaluated for drag and drop support
+- [ ] Synthetic transaction tokens evaluated for iframe and frame support
+- [ ] Synthetic transaction tokens evaluated for popup and alert handling
+- [ ] Synthetic transaction tokens evaluated for navigation and history support
+- [ ] Synthetic transaction tokens evaluated for file upload and download validation
+- [ ] Synthetic transaction tokens evaluated for mobile device emulation
+- [ ] Synthetic transaction tokens evaluated for geolocation simulation
+- [ ] Sint--
