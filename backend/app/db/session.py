@@ -11,6 +11,10 @@ engine = create_engine(
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
     pool_timeout=settings.DATABASE_POOL_TIMEOUT,
     pool_recycle=settings.DATABASE_POOL_RECYCLE,
+    # Verify connections are still alive on checkout (PostgreSQL connections
+    # can be silently dropped by the server/firewall after idle timeouts).
+    # Cheap SELECT 1 per checkout; prevents stale-connection errors.
+    pool_pre_ping=True,
     # SQLite-specific connect args
     connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
 )
