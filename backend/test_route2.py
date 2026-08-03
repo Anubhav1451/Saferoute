@@ -1,79 +1,43 @@
 #!/usr/bin/env python
 """
-Test the routing service with given coordinates.
+Test the routing service with given coordinates against the current GIS
+routing implementation using an in-memory graph.
 """
 import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
 
-# Add the backend directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 
 from app.services.routing import SafetyRoutingService
-from app.db.models import SafetyNode, CrimeHotspot, UserReport, LightingLevel, CrowdDensity, SeverityLevel
-from app.schemas.routing import Coordinate
-from sqlalchemy.orm import Session
+from routing_test_helpers import (
+    create_graph_session,
+    default_source,
+    default_destination,
+    assert_valid_route_result,
+)
+
 
 def test_routing_with_mock_data():
-    """Test the routing service with mock data to avoid database dependency."""
-    # Mock the database session
-    db = Mock(spec=Session)
+    """Test the routing service on an in-memory graph (no DB dependency)."""
+    db = create_graph_session()
+    try:
+        routing_service = SafetyRoutingService(db)
+        source = default_source()
+        destination = default_destination()
 
-    # Create the routing service
-    routing_service = SafetyRoutingService(db)
+        result = routing_service.find_safest_route(source, destination, safety_weight=0.5)
 
-    # Mock the database queries for black_spots and accident_records
-    def mock_query(model):
-        query_mock = MagicMock()
-        if model.__name__ == 'HighwayBlackSpot':
-            query_mock.all.return_value = []
-        elif model.__name__ == 'AccidentRecord':
-            query_mock.all.return_value = []
-        else:
-            # For other models (SafetyNode, CrimeHotspot, UserReport, RoadSegmentRisk, etc.)
-            # we'll handle this in the specific method mocks below
-            query_mock.all.return_value = []
-        return query_mock
+        assert_valid_route_result(result)
+        assert len(result["safest_route"]) >= 2
+        assert len(result["fastest_route"]) >= 2
 
-    db.query.side_effect = mock_query
+        # Every returned coordinate is a real Coordinate object with numeric fields
+        for coord in result["safest_route"]:
+            assert isinstance(coord.latitude, float)
+            assert isinstance(coord.longitude, float)
+    finally:
+        db.close()
 
-    # Mock the safety data to return some dummy data
-    # We'll create a few safety nodes along a path from Delhi to the destination
-    # For simplicity, we'll make the safety data return empty so that penalties are zero
-    # and the safest and fastest routes should be the same (straight line)
-    # But we want to see the coordinates.
-
-    # We'll mock both get_nearby_safety_data and get_nearby_safety_data_bounding_box to return empty lists
-    with patch('app.services.routing.SafetyRoutingService.get_nearby_safety_data') as mock_get_data, \
-         patch('app.services.routing.SafetyRoutingService.get_nearby_safety_data_bounding_box') as mock_get_data_bbox:
-        mock_get_data.return_value = ([], [], [], [])
-        mock_get_data_bbox.return_value = ([], [], [], [])
-
-        # Also mock the AI safety score to return -1 (so it falls back to rule-based)
-        with patch('app.services.routing.SafetyRoutingService.calculate_ai_safety_score') as mock_ai:
-            mock_ai.return_value = -1.0
-
-            # Create dummy source and destination
-            source = Coordinate(latitude=28.6315, longitude=77.2167)
-            destination = Coordinate(latitude=29.9660, longitude=77.5540)
-
-            # Call the routing function
-            result = routing_service.find_safest_route(source, destination, safety_weight=0.5)
-
-            # Print the results
-            print("Safest route coordinate count:", len(result['safest_route']))
-            print("Fastest route coordinate count:", len(result['fastest_route']))
-            print("Safest route safety score:", result['safest_safety_score'])
-            print("Fastest route safety score:", result['fastest_safety_score'])
-            print("Are the routes different?", result['safest_route'] != result['fastest_route'])
-
-            # Print all coordinates of safest route for inspection
-            print("\nSafest route coordinates:")
-            for i, coord in enumerate(result['safest_route']):
-                print(f"  {i}: {coord}")
-            print("\nFastest route coordinates:")
-            for i, coord in enumerate(result['fastest_route']):
-                print(f"  {i}: {coord}")
 
 if __name__ == '__main__':
     test_routing_with_mock_data()
