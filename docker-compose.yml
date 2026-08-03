@@ -5,7 +5,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.prod
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -37,12 +37,16 @@ services:
   postgres:
     image: postgis/postgis:15-3.3
     restart: unless-stopped
+    # SEC-15: bind to loopback only so the DB is reachable from the host for
+    # local tooling but NOT published to the LAN. Containers reach it over the
+    # internal bridge network. (Previously "5432:5432" exposed it host-wide
+    # with default credentials.)
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_DB=saferoute
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init_postgis.sql:/docker-entrypoint-initdb.d/init_postgis.sql:ro
@@ -58,8 +62,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # SEC-15: same loopback-only binding as postgres; containers use the
+    # internal bridge network, not a host-published port.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     command: redis-server --save 60 1 --loglevel warning
     volumes:
       - redis-data:/data
@@ -119,7 +125,26 @@ profiles:
       backend:
         environment:
           - DEBUG=false
+          # SEC-15: fail the compose up if API keys aren't provided. This turns
+          # auth ON for every API route (all /api/v1/* and /metrics are
+          # protected; only the exempt list stays public) and prevents a
+          # misconfigured public deploy. Provide API_KEYS at deploy time.
+          - API_KEY_REQUIRED=true
+          - API_KEYS=${API_KEYS:?API_KEYS must be set when using the production profile}
+          # SEC-16 (T1): enable the defense-in-depth middleware ONLY in the
+          # production profile. Local developer defaults (config.py) stay off.
+          - RATE_LIMIT_ENABLED=true
+          - REQUEST_TIMEOUT_ENABLED=true
+          - REQUEST_SIZE_LIMIT_ENABLED=true
+          # SEC-16 (T6): fail fast instead of silently falling back to the
+          # default postgres:postgres URL. The top-level default below is only
+          # for local full-stack development.
+          - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set when using the production profile}
       postgres:
-        # Already defined above
+        # SEC-16 (T6): require an explicit DB password in production so a
+        # misconfigured deploy cannot boot PostgreSQL with the well-known
+        # 'postgres' password. Local development keeps the top-level default.
+        environment:
+          - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set when using the production profile}
       redis:
         # Already defined above
