@@ -360,9 +360,13 @@ def predict_safety_score(
 
         return safety_score
     except Exception as e:
-        logger.error(f"Error predicting safety score: {e}")
-        # Return neutral score on error
-        return 0.5
+        logger.exception(f"Error predicting safety score: {e}")
+        # Do NOT fabricate a prediction. A made-up midpoint score of 0.5
+        # would be reported to the client as a real model output, hiding
+        # missing/untrained models and genuine inference errors. Surface the
+        # failure so the API layer returns an explicit error (HTTP 500) and
+        # never a silent, incorrect safety score.
+        raise
     finally:
         if close_db:
             db.close()

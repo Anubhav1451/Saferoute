@@ -85,3 +85,6 @@ backend/data/raw/
 data/raw/
 *.db-shm
 *.db-wal
+
+# Machine learning model outputs
+backend/ml/models/prediction_log.csv
