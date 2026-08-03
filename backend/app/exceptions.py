@@ -1,6 +1,5 @@
 # app/exceptions.py
 from fastapi import HTTPException
-from typing import Optional, Dict, Any
 
 
 class APIException(HTTPException):

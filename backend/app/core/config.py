@@ -1,9 +1,8 @@
 # app/core/config.py
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import List, Optional, Any
+from typing import List, Any
 import secrets
-import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -35,6 +34,23 @@ class Settings(BaseSettings):
         else:
             # Try to interpret as JSON list? but we don't expect that
             raise ValueError(f"Invalid type for BACKEND_CORS_ORIGINS: {type(v)}")
+
+    @field_validator("DATABASE_URL", mode="after")
+    @classmethod
+    def resolve_database_url(cls, v: str) -> str:
+        """
+        Resolve DATABASE_URL from the environment and make relative SQLite
+        paths absolute so runtime and tests always use the same DB location
+        regardless of the process working directory.
+
+        sqlite:///relative.db -> sqlite:///{BASE_DIR}/relative.db
+        sqlite:////abs/path.db (4 slashes) is already absolute and left untouched.
+        """
+        if isinstance(v, str) and v.startswith("sqlite:///") and not v.startswith("sqlite:////"):
+            relative = v[len("sqlite:///"):]
+            if relative and not Path(relative).is_absolute():
+                return f"sqlite:///{(BASE_DIR / relative).resolve().as_posix()}"
+        return v
 
     # Database
     DATABASE_URL: str = Field(default="sqlite:///./saferoute.db")
@@ -82,13 +98,14 @@ class Settings(BaseSettings):
 
     # Mapbox API Configuration
     MAPBOX_DIRECTIONS_TIMEOUT_SEC: int = 15      # Timeout for Mapbox Directions API calls
-    MAPBOX_TOKEN: str                            # Mapbox access token (required, no default)
+    MAPBOX_TOKEN: str = ""                       # Mapbox access token (optional, no longer required for startup)
 
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = False
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
     RATE_LIMIT_BURST: int = 10
     RATE_LIMIT_PER_METHOD: bool = True  # Apply limits per HTTP method
+    RATE_LIMIT_MAX_CLIENTS: int = 10000  # Cap on in-memory token buckets (DoS bound)
     RATE_LIMIT_EXEMPT_PATHS: list = ["/", "/health", "/docs", "/redoc", "/openapi.json", "/debug/env"]
 
     # Request Size Limits
@@ -122,6 +139,22 @@ class Settings(BaseSettings):
     def api_keys_set(self) -> bool:
         """Check if API keys have been configured."""
         return bool(self.API_KEYS)
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self):
+        """
+        Fail fast on misconfigured production secrets.
+
+        When API key auth is enabled (API_KEY_REQUIRED=True) but no keys are
+        configured, every protected endpoint would reject all requests with 401.
+        Raise at startup instead of failing silently in production.
+        """
+        if not self.DEBUG and self.API_KEY_REQUIRED and not self.api_keys_set:
+            raise ValueError(
+                "API_KEY_REQUIRED is True but no API_KEYS are configured. "
+                "Set API_KEYS (comma-separated) for production."
+            )
+        return self
 
     # Weather Cache Configuration
     WEATHER_CACHE_MAX_SIZE: int = 1000
