@@ -7,15 +7,14 @@ Maintains exact same API contract as previous implementation.
 
 import math
 import logging
-from datetime import datetime, timedelta
-from typing import List, Tuple, Dict, Optional, Any
+from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 
-from app.db.models import GraphNode, GraphEdge
+from app.db.models import GraphNode, GraphEdge, RoadSegmentRisk
 from app.graph.spatial_index import get_spatial_index
 from app.graph.nearest import nearest_node
 from app.graph.cost_engine import RouteCostEngine
-from app.schemas.routing import Coordinate, RouteSegment
+from app.schemas.routing import Coordinate
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,6 +37,11 @@ class SafetyRoutingService:
         self.db = db
         self.spatial_index = get_spatial_index(db)
         self.cost_engine = RouteCostEngine(db)
+        # Lazily-loaded RoadSegmentRisk records, constant for the lifetime of
+        # one request. _calculate_safety_score is called once per route
+        # segment (twice per request), so loading these once avoids a DB
+        # query per segment (same per-instance caching the cost engine uses).
+        self._risk_records: Optional[list] = None
 
     def _validate_coordinates(self, latitude: float, longitude: float) -> bool:
         """
@@ -113,8 +117,10 @@ class SafetyRoutingService:
             return cost_output.total_cost
         except Exception as e:
             logger.warning(f"Failed to compute cost for edge {edge_id}: {e}")
-            # Fallback to distance-based cost if cost engine fails
-            edge = self.db.query(GraphEdge).filter(GraphEdge.id == edge_id).first()
+            # Fallback to distance-based cost if cost engine fails.
+            # Session.get() returns the identity-mapped edge (already loaded
+            # by _get_neighbors) without issuing another SELECT.
+            edge = self.db.get(GraphEdge, edge_id)
             if edge:
                 return float(edge.length)  # Fallback to length
             raise
@@ -127,41 +133,64 @@ class SafetyRoutingService:
             node: Current GraphNode
 
         Returns:
-            List of tuples (neighbor_node, cost, edge_id)
+            List of tuples (neighbor_node, cost, edge_id, mid_lat, mid_lon)
+            where mid_lat/mid_lon is the geographic midpoint of the edge,
+            used for risk lookup without extra DB queries.
         """
         neighbors = []
 
         # Get edges where this node is the source
-        edges = self.db.query(GraphEdge).filter(
+        edges_out = self.db.query(GraphEdge).filter(
             GraphEdge.source_node_id == node.id
         ).all()
 
-        for edge in edges:
-            neighbor = self.db.query(GraphNode).filter(
-                GraphNode.id == edge.dest_node_id
-            ).first()
-
-            if neighbor:
-                try:
-                    cost = self._get_edge_cost(edge.id)
-                    neighbors.append((neighbor, cost, edge.id))
-                except Exception as e:
-                    logger.warning(f"Skipping edge {edge.id} due to cost calculation error: {e}")
-
         # Get edges where this node is the destination (for bidirectional edges)
-        edges = self.db.query(GraphEdge).filter(
+        edges_in = self.db.query(GraphEdge).filter(
             GraphEdge.dest_node_id == node.id
         ).all()
 
-        for edge in edges:
-            neighbor = self.db.query(GraphNode).filter(
-                GraphNode.id == edge.source_node_id
-            ).first()
+        # Batch-load all neighbor nodes with a single IN query instead of
+        # issuing one GraphNode SELECT per edge (N+1). Chunk the IN clause
+        # to stay under SQLite's ~999 bound-variable limit for very
+        # high-degree nodes.
+        needed_ids = {
+            edge.dest_node_id for edge in edges_out
+        } | {
+            edge.source_node_id for edge in edges_in
+        }
+        node_map: Dict[int, GraphNode] = {}
+        if needed_ids:
+            ids_list = sorted(needed_ids)
+            for i in range(0, len(ids_list), 500):
+                chunk = ids_list[i:i + 500]
+                nodes = self.db.query(GraphNode).filter(
+                    GraphNode.id.in_(chunk)
+                ).all()
+                node_map.update({n.id: n for n in nodes})
 
+        # Process outgoing edges (preserve original iteration order)
+        for edge in edges_out:
+            neighbor = node_map.get(edge.dest_node_id)
             if neighbor:
                 try:
                     cost = self._get_edge_cost(edge.id)
-                    neighbors.append((neighbor, cost, edge.id))
+                    # Outgoing edge: from = current node, to = neighbor
+                    mid_lat = (node.latitude + neighbor.latitude) / 2.0
+                    mid_lon = (node.longitude + neighbor.longitude) / 2.0
+                    neighbors.append((neighbor, cost, edge.id, mid_lat, mid_lon))
+                except Exception as e:
+                    logger.warning(f"Skipping edge {edge.id} due to cost calculation error: {e}")
+
+        # Process incoming edges
+        for edge in edges_in:
+            neighbor = node_map.get(edge.source_node_id)
+            if neighbor:
+                try:
+                    cost = self._get_edge_cost(edge.id)
+                    # Incoming edge: from = neighbor, to = current node
+                    mid_lat = (neighbor.latitude + node.latitude) / 2.0
+                    mid_lon = (neighbor.longitude + node.longitude) / 2.0
+                    neighbors.append((neighbor, cost, edge.id, mid_lat, mid_lon))
                 except Exception as e:
                     logger.warning(f"Skipping edge {edge.id} due to cost calculation error: {e}")
 
@@ -250,8 +279,13 @@ class SafetyRoutingService:
 
     def _calculate_safety_score(self, latitude: float, longitude: float) -> float:
         """
-        Calculate safety score for a point based on nearby risk data.
-        Simplified implementation - in production this would be more sophisticated.
+        Calculate safety score for a point based on nearby production risk data.
+
+        Queries RoadSegmentRisk records near the point (pre-computed from
+        accident/black-spot data) and converts the closest record's risk_score
+        to a safety score using the same inversion the ML training pipeline
+        uses (safety_score = 1.0 - risk_score). When no risk record is within
+        the configured search radius, returns the neutral 0.8 default.
 
         Args:
             latitude: Latitude in degrees
@@ -260,10 +294,50 @@ class SafetyRoutingService:
         Returns:
             Safety score between 0.0 and 1.0 (higher is safer)
         """
-        # For now, return a reasonable default
-        # In a full implementation, this would query nearby RoadSegmentRisk records
-        # and other safety features to compute an actual safety score
-        return 0.8  # Placeholder - reasonably safe
+        closest = self._nearest_risk_record(latitude, longitude)
+
+        if closest is None or closest.risk_score is None:
+            return 0.8  # No production risk data near this point
+        return max(0.0, min(1.0, 1.0 - closest.risk_score))
+
+    def _nearest_risk_record(self, latitude: float, longitude: float) -> Optional[RoadSegmentRisk]:
+        """
+        Find the RoadSegmentRisk record nearest to a coordinate.
+
+        Uses the pre-loaded ``_risk_records`` list (loaded once per request)
+        and a simple bounding-box prefilter followed by exact haversine
+        distance, matching the lookups used for safety scoring. This avoids a
+        per-edge DB query (N+1) during safe-mode A*.
+
+        Args:
+            latitude: Latitude in degrees
+            longitude: Longitude in degrees
+
+        Returns:
+            The closest RoadSegmentRisk within SEGMENT_RISK_SEARCH_RADIUS_M,
+            or None when no record is within range.
+        """
+        radius_m = getattr(settings, 'SEGMENT_RISK_SEARCH_RADIUS_M', 200.0)
+        lat_delta = radius_m / 111000.0
+        lon_delta = radius_m / (111000.0 * max(0.01, math.cos(math.radians(latitude))))
+
+        if self._risk_records is None:
+            self._risk_records = self.db.query(RoadSegmentRisk).all()
+
+        closest = None
+        closest_dist = None
+        for r in self._risk_records:
+            if not (latitude - lat_delta <= r.start_latitude <= latitude + lat_delta):
+                continue
+            if not (longitude - lon_delta <= r.start_longitude <= longitude + lon_delta):
+                continue
+            d = self._haversine_distance(latitude, longitude, r.start_latitude, r.start_longitude)
+            if d > radius_m:
+                continue
+            if closest is None or d < closest_dist:
+                closest = r
+                closest_dist = d
+        return closest
 
     def _astar_search(self, start_node_id: int, goal_node_id: int,
                      weight_mode: str = 'balanced') -> list:
@@ -285,6 +359,14 @@ class SafetyRoutingService:
 
         if not start_node or not goal_node:
             raise ValueError("Start or goal node not found")
+
+        # Node cache: avoids re-SELECTing GraphNode rows that _get_neighbors
+        # already loaded. Populated lazily; only used to skip redundant queries,
+        # so the visited set and path are identical to before.
+        node_cache: Dict[int, GraphNode] = {
+            start_node.id: start_node,
+            goal_node.id: goal_node,
+        }
 
         # A* data structures
         import heapq
@@ -316,7 +398,11 @@ class SafetyRoutingService:
                 path_ids = self._reconstruct_path(came_from, current_id)
                 path_nodes = []
                 for node_id in path_ids:
-                    node = self.db.query(GraphNode).filter(GraphNode.id == node_id).first()
+                    node = node_cache.get(node_id)
+                    if node is None:
+                        node = self.db.query(GraphNode).filter(GraphNode.id == node_id).first()
+                        if node:
+                            node_cache[node_id] = node
                     if node:
                         path_nodes.append(node)
                 return path_nodes
@@ -325,20 +411,36 @@ class SafetyRoutingService:
             closed_set.add(current_id)
             nodes_explored += 1
 
-            # Get current node
-            current_node = self.db.query(GraphNode).filter(GraphNode.id == current_id).first()
+            # Get current node (already loaded when it was discovered)
+            current_node = node_cache.get(current_id)
+            if current_node is None:
+                current_node = self.db.query(GraphNode).filter(GraphNode.id == current_id).first()
+                if current_node:
+                    node_cache[current_id] = current_node
             if not current_node:
                 continue
 
             # Get neighbors
             neighbors = self._get_neighbors(current_node)
 
-            for neighbor, edge_cost, edge_id in neighbors:
+            for neighbor, edge_cost, edge_id, mid_lat, mid_lon in neighbors:
+                # Cache neighbor nodes so the goal-reconstruction and future
+                # pops don't re-query them.
+                node_cache.setdefault(neighbor.id, neighbor)
+
                 if neighbor.id in closed_set:
                     continue
 
+                # The cost accumulated along the path depends on weight_mode:
+                # safe mode accumulates safety cost so the priority queue
+                # orders by total path safety, not the single incoming edge.
+                if weight_mode == 'safe':
+                    edge_increment = self._get_safety_cost(edge_id, mid_lat, mid_lon)
+                else:
+                    edge_increment = edge_cost
+
                 # Calculate tentative g_score
-                tentative_g_score = g_score[current_id] + edge_cost
+                tentative_g_score = g_score[current_id] + edge_increment
 
                 # If this path to neighbor is better than any previous one
                 if neighbor.id not in g_score or tentative_g_score < g_score[neighbor.id]:
@@ -346,31 +448,32 @@ class SafetyRoutingService:
                     came_from[neighbor.id] = current_id
                     g_score[neighbor.id] = tentative_g_score
 
-                    # Calculate heuristic
-                    neighbor_node = self.db.query(GraphNode).filter(GraphNode.id == neighbor.id).first()
-                    if neighbor_node:
-                        heuristic = self._heuristic(neighbor_node, goal_node)
+                    # Calculate heuristic using the already-loaded neighbor
+                    heuristic = self._heuristic(neighbor, goal_node)
 
-                        # Apply weight_mode to determine f_score
-                        if weight_mode == 'fast':
-                            # Pure distance optimization - use edge cost as-is
-                            f_score[neighbor.id] = tentative_g_score + (heuristic * 0.5)  # Lower weight on heuristic
-                        elif weight_mode == 'safe':
-                            # Safety optimization - use safety cost
-                            safety_cost = self._get_safety_cost(edge_id)
-                            f_score[neighbor.id] = safety_cost + (heuristic * 1.0)  # Higher weight on heuristic for safety
-                        else:  # 'balanced'
-                            # Balance between distance and safety
-                            f_score[neighbor.id] = tentative_g_score + (heuristic * 0.8)
+                    # Apply weight_mode to determine f_score
+                    if weight_mode == 'fast':
+                        # Pure distance optimization - use edge cost as-is
+                        f_score[neighbor.id] = tentative_g_score + (heuristic * 0.5)  # Lower weight on heuristic
+                    elif weight_mode == 'safe':
+                        # Safety optimization - accumulated safety cost along
+                        # the whole path plus the heuristic, matching how the
+                        # fast/balanced modes accumulate their g_score.
+                        f_score[neighbor.id] = tentative_g_score + (heuristic * 1.0)  # Higher weight on heuristic for safety
+                    else:  # 'balanced'
+                        # Balance between distance and safety
+                        f_score[neighbor.id] = tentative_g_score + (heuristic * 0.8)
 
-                        heapq.heappush(open_set, (f_score[neighbor.id], neighbor.id))
+                    heapq.heappush(open_set, (f_score[neighbor.id], neighbor.id))
 
-        # If we exhaust the open set without finding the goal, return direct path
+        # If we exhaust the open set without finding the goal, raise the same
+        # error the rest of the project uses for unreachable destinations
+        # (ValueError -> HTTP 400 VALIDATION_ERROR in app/api/v1/routing.py).
+        # A straight-line path from start to goal would follow no road, so it
+        # must not be returned as a route.
         logger.warning(f"A* search failed to find path from {start_node_id} to {goal_node_id} "
-                      f"after exploring {nodes_explored} nodes. Returning direct path.")
-
-        # Return direct path as fallback
-        return [start_node, goal_node]
+                      f"after exploring {nodes_explored} nodes.")
+        raise ValueError("No path found between the source and destination")
 
     def _heuristic(self, node1: GraphNode, node2: GraphNode) -> float:
         """
@@ -388,309 +491,46 @@ class SafetyRoutingService:
             node2.latitude, node2.longitude
         )
 
-    def _get_safety_cost(self, edge_id: int) -> float:
+    def _get_safety_cost(self, edge_id: int, mid_lat: float, mid_lon: float) -> float:
         """
         Get safety-based cost for an edge (lower = safer).
         Used for safety-weighted A* search.
 
+        The risk lookup is keyed by the edge's physical location (midpoint)
+        rather than by assuming ``RoadSegmentRisk.id`` equals the graph edge
+        id — those two sequences are unrelated, so the old
+        ``RoadSegmentRisk.id == edge_id`` match was coincidental. Uses the
+        pre-loaded ``_risk_records`` list, so this is O(risk_records) with no
+        additional DB queries (no N+1).
+
         Args:
-            edge_id: ID of the GraphEdge
+            edge_id: ID of the GraphEdge (kept for the fallback path)
+            mid_lat: Latitude of the edge midpoint
+            mid_lon: Longitude of the edge midpoint
 
         Returns:
             Safety cost (lower is safer)
         """
         try:
-            # Get risk data if available
-            risk_data = self.db.query(RoadSegmentRisk).filter(
-                RoadSegmentRisk.id == edge_id
-            ).first()
+            risk_data = self._nearest_risk_record(mid_lat, mid_lon)
 
             if risk_data and risk_data.risk_score is not None:
                 # Convert risk_score (0-1, higher=more risky) to safety cost
                 # For safety routing: lower cost = safer route
-                # We want: risk_score=0.0 (safe) -> low cost, risk_score=1.0 (dangerous) -> high cost
-                safety_cost = (1.0 - risk_data.risk_score) * 50.0  # Invert and scale
+                # risk_score=0.0 (safe) -> low cost, risk_score=1.0 (dangerous) -> high cost
+                safety_cost = risk_data.risk_score * 50.0  # Scale directly
                 return max(1.0, safety_cost)  # Ensure minimum cost
             else:
                 # No risk data available - assume moderately safe
                 return 25.0  # Moderate safety cost
         except Exception:
-            # Fallback to distance-based cost
-            edge = self.db.query(GraphEdge).filter(GraphEdge.id == edge_id).first()
+            # Fallback to distance-based cost. The edge was already loaded
+            # into the session identity map by _get_neighbors, so
+            # Session.get() avoids a redundant SELECT.
+            edge = self.db.get(GraphEdge, edge_id)
             if edge:
                 return float(edge.length)
             return 25.0  # Default fallback
-
-    def calculate_ai_safety_score(self, latitude: float, longitude: float,
-                                  timestamp: Optional[Any] = None) -> float:
-        """
-        Calculate safety score using the AI model.
-        Returns -1.0 if the AI model fails.
-
-        Args:
-            latitude: Latitude in degrees
-            longitude: Longitude in degrees
-            timestamp: Optional timestamp for temporal calculation
-
-        Returns:
-            Safety score between 0.0 and 1.0, or -1.0 if AI model fails
-        """
-        # This method is kept for compatibility with existing tests.
-        # In the GIS-based service, we don't have the AI model integrated here.
-        # We return a default value that can be overridden by tests.
-        # The actual safety scoring is done via _calculate_safety_score which uses risk data.
-        return 0.5
-
-    def calculate_route_analytics(self, route_coords: List[Dict],
-                                  safety_nodes: List[Any],
-                                  crime_hotspots: List[Any],
-                                  user_reports: List[Any],
-                                  segment_risks: List[Any],
-                                  black_spots: List[Any] = None,
-                                  accident_records: List[Any] = None) -> Dict[str, Any]:
-        """
-        Calculate comprehensive safety analytics for a route.
-
-        Args:
-            route_coords: List of dicts with 'latitude' and 'longitude' keys
-            safety_nodes: List of SafetyNode objects
-            crime_hotspots: List of CrimeHotspot objects
-            user_reports: List of UserReport objects
-            segment_risks: List of RoadSegmentRisk objects
-            black_spots: Optional list of HighwayBlackSpot objects
-            accident_records: Optional list of AccidentRecord objects
-
-        Returns:
-            Dictionary containing analytics metrics
-        """
-        # Handle default values for optional parameters
-        if black_spots is None:
-            black_spots = []
-        if accident_records is None:
-            accident_records = []
-
-        # If we have insufficient route coordinates, return default analytics
-        if not route_coords or len(route_coords) < 2:
-            return self._get_default_analytics()
-
-        # Initialize metrics
-        total_distance = 0.0
-        safety_scores = []
-        risk_scores = []
-        penalties = []
-        segment_count = 0
-        unsafe_distance = 0.0
-        safe_distance = 0.0
-        black_spots_crossed = 0
-        dangerous_intersections = 0
-
-        # For risk distribution (5 buckets: 0-0.2, 0.2-0.4, 0.4-0.6, 0.6-0.8, 0.8-1.0)
-        risk_distribution = [0, 0, 0, 0, 0]
-
-        # Process each segment
-        for i in range(len(route_coords) - 1):
-            from_coord = route_coords[i]
-            to_coord = route_coords[i + 1]
-
-            # Calculate segment distance
-            distance = self._haversine_distance(
-                from_coord["latitude"], from_coord["longitude"],
-                to_coord["latitude"], to_coord["longitude"]
-            )
-            total_distance += distance
-
-            # Calculate penalty and safety for midpoint
-            mid_lat = (from_coord["latitude"] + to_coord["latitude"]) / 2
-            mid_lon = (from_coord["longitude"] + to_coord["longitude"]) / 2
-
-            # Calculate penalty based on safety data
-            penalty = self._calculate_penalty(mid_lat, mid_lon, safety_nodes, crime_hotspots, user_reports, segment_risks)
-
-            # Check for high-risk area
-            if self._is_high_risk_area(mid_lat, mid_lon, crime_hotspots):
-                penalty *= getattr(settings, 'HIGH_RISK_SEGMENT_MULTIPLIER', 2.0)
-
-            # Calculate safety score
-            # Check if we have any GIS safety data to use for calculation
-            has_gis_safety_data = bool(safety_nodes or crime_hotspots or user_reports or segment_risks)
-
-            if has_gis_safety_data and penalty > 0:
-                # Use GIS-based calculation when we have safety data and penalty > 0
-                # Normalize penalty to reasonable range for safety score calculation
-                # Penalty of 0 = safety score of 1.0 (completely safe)
-                # Penalty of 50+ = safety score approaching 0.0 (very unsafe)
-                safety_score = max(0.0, min(1.0, 1.0 - (penalty / 50.0)))
-            else:
-                # Fall back to AI safety score when no GIS safety data is available
-                # Get AI safety score for the midpoint (returns 0.0-1.0 where higher is safer, or -1.0 if unavailable)
-                ai_safety_score = self.calculate_ai_safety_score(mid_lat, mid_lon)
-                if ai_safety_score >= 0:
-                    # AI is available and returned a valid score
-                    safety_score = ai_safety_score
-                else:
-                    # AI is unavailable, use neutral safety score
-                    safety_score = 0.5
-
-            risk_score = 1.0 - safety_score
-
-            # Check for black spots crossed
-            for bs in black_spots:
-                bs_distance = self._haversine_distance(mid_lat, mid_lon, bs.latitude, bs.longitude)
-                if bs_distance <= getattr(bs, 'radius', 50.0):  # Within the black spot radius
-                    black_spots_crossed += 1
-                    break  # Count each black spot only once per segment
-
-            # Check for dangerous intersections (simplified: high accident density areas)
-            accident_count = 0
-            for acc in accident_records:
-                acc_distance = self._haversine_distance(mid_lat, mid_lon, acc.latitude, acc.longitude)
-                if acc_distance < 50:  # Within 50 meters
-                    accident_count += 1
-            if accident_count >= 3:  # Threshold for dangerous intersection
-                dangerous_intersections += 1
-
-            # Accumulate metrics
-            safety_scores.append(safety_score)
-            risk_scores.append(risk_score)
-            penalties.append(penalty)
-            segment_count += 1
-
-            # Distance safety classification
-            if risk_score > 0.6:
-                unsafe_distance += distance
-            elif risk_score < 0.3:
-                safe_distance += distance
-
-            # Risk distribution bucket
-            bucket_index = min(int(risk_score * 5), 4)  # 0-4 for scores 0.0-0.8, 4 for 0.8-1.0
-            risk_distribution[bucket_index] += 1
-
-        # Calculate final metrics
-        avg_safety = sum(safety_scores) / len(safety_scores) if safety_scores else 0.5
-        avg_risk = 1.0 - avg_safety
-        max_risk = max(risk_scores) if risk_scores else 0.5
-        overall_safety_score = avg_safety
-        avg_confidence = 0.8  # Placeholder - in reality would come from data quality metrics
-
-        return {
-            "average_risk": round(avg_risk, 3),
-            "max_risk": round(max_risk, 3),
-            "black_spots_crossed": black_spots_crossed,
-            "black_spots_avoided": 0,  # Requires comparison route - not implemented
-            "dangerous_intersections": dangerous_intersections,
-            "average_confidence": round(avg_confidence, 2),
-            "risk_distribution": risk_distribution,
-            "segment_count": segment_count,
-            "unsafe_distance": round(unsafe_distance, 1),
-            "safe_distance": round(safe_distance, 1),
-            "overall_safety_score": round(overall_safety_score, 3)
-        }
-
-    def _calculate_penalty(self, lat: float, lon: float,
-                          safety_nodes: List[Any],
-                          crime_hotspots: List[Any],
-                          user_reports: List[Any],
-                          segment_risks: List[Any]) -> float:
-        """
-        Calculate penalty for a point based on safety data.
-        Simplified version of the original method.
-
-        Args:
-            lat: Latitude in degrees
-            lon: Longitude in degrees
-            safety_nodes: List of SafetyNode objects
-            crime_hotspots: List of CrimeHotspot objects
-            user_reports: List of UserReport objects
-            segment_risks: List of RoadSegmentRisk objects
-
-        Returns:
-            Penalty value
-        """
-        penalty = 0.0
-
-        # Crime hotspot penalty
-        for hotspot in crime_hotspots:
-            distance = self._haversine_distance(lat, lon, hotspot.latitude, hotspot.longitude)
-            if distance < hotspot.radius:
-                # Calculate proximity factor (closer = higher penalty)
-                proximity_factor = 1.0 - (distance / hotspot.radius)
-
-                if hotspot.severity == "HIGH":
-                    # Exponential penalty for high severity hotspots
-                    base_penalty = settings.CRIME_HOTSPOT_HIGH_PENALTY_BASE if hasattr(settings, 'CRIME_HOTSPOT_HIGH_PENALTY_BASE') else 10.0
-                    exponential_penalty = base_penalty * (2 ** proximity_factor)
-                    penalty += exponential_penalty
-                elif hotspot.severity == "MEDIUM":
-                    penalty += settings.CRIME_HOTSPOT_MEDIUM_PENALTY * proximity_factor
-                else:  # LOW
-                    penalty += settings.CRIME_HOTSPOT_LOW_PENALTY * proximity_factor
-
-        # Safety node penalty
-        for node in safety_nodes:
-            distance = self._haversine_distance(lat, lon, node.latitude, node.longitude)
-            if distance < 100:  # Within 100 meters
-                if node.lighting_level == "LOW":
-                    penalty += settings.SAFETY_NODE_LOW_LIGHTING_PENALTY if hasattr(settings, 'SAFETY_NODE_LOW_LIGHTING_PENALTY') else 5.0
-                if node.crowd_density == "SPARSE":
-                    penalty += settings.SAFETY_NODE_SPARSE_CROWD_PENALTY if hasattr(settings, 'SAFETY_NODE_SPARSE_CROWD_PENALTY') else 5.0
-                # Bonus for high safety score
-                if node.safety_score > 0.8:
-                    penalty -= settings.SAFETY_NODE_SPARSE_CROWD_PENALTY * 0.3  # Reduced bonus
-
-        # User report penalty (dynamic based on recency)
-        recent_timestamp = datetime.utcnow() - timedelta(days=7)
-        for report in user_reports:
-            if report.is_active and report.timestamp > recent_timestamp:
-                distance = self._haversine_distance(lat, lon, report.latitude, report.longitude)
-                if distance < 150:  # Within 150 meters
-                    # More recent reports have higher penalty
-                    days_old = (datetime.utcnow() - report.timestamp).days
-                    penalty += (settings.USER_REPORT_BASE_PENALTY / (days_old + 1)) if hasattr(settings, 'USER_REPORT_BASE_PENALTY') else 1.0 / (days_old + 1)
-
-        # Road segment risk penalty (pre-computed from accident data)
-        if segment_risks:
-            for sr in segment_risks:
-                distance = self._haversine_distance(lat, lon, sr.start_latitude, sr.start_longitude)
-                if distance < settings.SEGMENT_RISK_SEARCH_RADIUS_M:
-                    penalty += sr.risk_score * settings.SEGMENT_RISK_BASE_PENALTY
-
-        return max(0, penalty)  # Ensure penalty is non-negative
-
-    def _is_high_risk_area(self, lat: float, lon: float,
-                          crime_hotspots: List[Any]) -> bool:
-        """
-        Check if a coordinate is in a high-risk area (HIGH severity hotspot).
-
-        Args:
-            lat: Latitude in degrees
-            lon: Longitude in degrees
-            crime_hotspots: List of CrimeHotspot objects
-
-        Returns:
-            True if within radius of any HIGH severity hotspot, False otherwise
-        """
-        for hotspot in crime_hotspots:
-            if hotspot.severity == "HIGH":
-                distance = self._haversine_distance(lat, lon, hotspot.latitude, hotspot.longitude)
-                if distance < hotspot.radius:
-                    return True
-        return False
-
-    def _get_default_analytics(self) -> Dict[str, Any]:
-        """Return default analytics when route data is insufficient."""
-        return {
-            "average_risk": 0.5,
-            "max_risk": 0.5,
-            "black_spots_crossed": 0,
-            "black_spots_avoided": 0,
-            "dangerous_intersections": 0,
-            "average_confidence": 0.3,
-            "risk_distribution": [0, 0, 0, 0, 0],
-            "segment_count": 0,
-            "unsafe_distance": 0.0,
-            "safe_distance": 0.0,
-            "overall_safety_score": 0.5
-        }
 
     def find_safest_route(self, source: Coordinate, destination: Coordinate,
                          safety_weight: float = None) -> dict:
@@ -741,25 +581,30 @@ class SafetyRoutingService:
         logger.info(f"Found start node {start_node.id} at ({start_node.latitude}, {start_node.longitude})")
         logger.info(f"Found end node {end_node.id} at ({end_node.latitude}, {end_node.longitude})")
 
-        # If start and end nodes are the same, return direct route
+        # If start and end nodes are the same, there is no real road path
+        # between them. Returning a straight line from source to destination
+        # would fabricate geometry that follows no road, so raise the same
+        # ValueError the rest of the project uses for invalid routes
+        # (ValueError -> HTTP 400 VALIDATION_ERROR in app/api/v1/routing.py).
         if start_node.id == end_node.id:
-            direct_coords = [source, destination]
-            distance, safety_score, segments = self._calculate_route_metrics(direct_coords)
-            return {
-                "safest_route": direct_coords,
-                "fastest_route": direct_coords,
-                "safest_distance": distance,
-                "fastest_distance": distance,
-                "safest_safety_score": safety_score,
-                "fastest_safety_score": safety_score,
-                "route_segments": segments
-            }
+            raise ValueError("Source and destination are the same node")
 
         # Step 2 & 3: A* over GraphEdge graph
         # Find fastest route (distance-weighted)
         fastest_path_nodes = self._astar_search(start_node.id, end_node.id, weight_mode='fast')
-        # Find safest route (safety-weighted)
-        safest_path_nodes = self._astar_search(start_node.id, end_node.id, weight_mode='safe')
+
+        # The safest-route search honours the caller's safety/distance preference:
+        # safety_weight > 0.5 -> safety-weighted A*, < 0.5 -> distance-weighted,
+        # == 0.5 -> balanced. The default (0.7) maps to 'safe', so default
+        # behaviour is unchanged.
+        if safety_weight > 0.5:
+            safest_weight_mode = 'safe'
+        elif safety_weight < 0.5:
+            safest_weight_mode = 'fast'
+        else:
+            safest_weight_mode = 'balanced'
+        # Find safest route (weighted by safety_weight)
+        safest_path_nodes = self._astar_search(start_node.id, end_node.id, weight_mode=safest_weight_mode)
 
         # Convert paths to coordinates
         fastest_path_coords = self._path_to_coordinates(fastest_path_nodes)

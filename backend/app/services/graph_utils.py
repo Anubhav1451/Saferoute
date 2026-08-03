@@ -1,9 +1,8 @@
 import math
 import logging
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from app.db.models import GraphNode, GraphEdge, OSMWayNode
+from app.db.models import GraphNode, GraphEdge
 from app.utils.geospatial import haversine_distance
 
 logger = logging.getLogger(__name__)
