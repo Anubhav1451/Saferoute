@@ -74,3 +74,14 @@ coverage/
 *.seed
 *.pid.lock
 backend/.env
+
+# Internal development scripts
+backend/_*.py
+
+# Data samples
+backend/data/raw/
+
+# Data samples
+data/raw/
+*.db-shm
+*.db-wal
