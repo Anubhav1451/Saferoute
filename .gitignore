@@ -89,3 +89,9 @@ data/raw/
 # Machine learning model outputs
 backend/ml/models/prediction_log.csv
 backend/ml/models/prediction_log.csv
+
+# Build artifacts and logs
+*.tsbuildinfo
+*.err
+lint_output.txt
+tsc_output.txt
